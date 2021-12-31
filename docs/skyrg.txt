@@ -1,0 +1,231 @@
+*skyrg.txt* Search wrapper function for ripgrep and fzf.
+
+Author: Jerry Feng <jerry.feng@skydio.com>
+License: MIT
+
+TODO: Pretty this up, table of contents, etc. etc.
+
+================================================================================
+INTRODUCTION                                                             *skyrg*
+
+Provides the ability to specify RG search filter options specifically from the
+command buffer as well as define search filter presets in your .vimrc that you
+can specify as part of the command
+
+Requires:
+ - the command ripgrep to be installed on your system
+ - the vim plugin 'junngunn/fzf` to be installed
+
+================================================================================
+COMMANDS                                                        *skyrg-commands*
+
+This plugin doesn't come with any commands!
+
+================================================================================
+USAGE                                                              *skyrg-usage*
+
+SkyRG is not complex enough to come with its own commands, just a SkyRG function
+and a SkyFilter class.
+
+--------------------------------------------------------------------------------
+SkyRG(...)                                                      *skyrg-function*
+
+The only function in this plugin! Passes in some filtering options and a query
+for rg.
+
+It takes am arbigrary list of function arguments and parses for flags/options
+until it can't match a flag, at which it considers the rest of the argument list
+the actual search query to pass to rg.
+Note that all options must come before the query!
+
+The argument list is designed to be used with f-args, but you could pass in
+extra flags if you'd like as shown below
+
+Additionally, arguments that can 'be a list' are comma delimited.
+
+Options:
+ --) Everything after this flag is considered part of the query. Useful if part
+     of your query would have been interpreted as a flag
+
+ -f) Specifically search within the filetypes listed in the next argument.
+     For example, this will only search in *.cc *.h and *.lcm files:
+         ':RG -f cc,h,lcm <QUERY>'
+     The flag can be specified multiple times, for instance:
+         ':RG -f cc -f h -f lcm <QUERY>'
+
+ -Nf) Specifically ignore filetypes listed in the next argument. Works like '-f'
+
+ -d) Specifically search within the directories listed in the next argument.
+     For example, the following command will change the 'root search'
+     directories to look within submodule1 and submodule2 but will not
+     necessarily include the <CURRENT WORKING DIRECTORY>.
+        ':RG -d path/to/submodule1,path/to/submodule2'
+     Notes:
+     - The pathing is assumed to be relative.
+     - You should pass in directories without the trailing slash.
+
+ -Nf) Specifically ignore directories listed in the next argument. Should be
+      passed in like a '-d' argument, but does not effect the 'root directories'
+      being searched.
+
+ -p) Based off filtering presets defined in your vimrc.
+     This has some interesting behavior to discuss:
+     - If any specific includes are specified, the specified preset's includes
+       are ignored, to promote "specificity" in our searches.
+     - The preset's ignores are always applied, unless already explicitly
+       specified in the command, since generally things we "default ignore"
+       should always be ignored.
+     This allows us to set some general base preset for a project, but also
+     allows us to search outside of the predefined include scope.
+
+--------------------------------------------------------------------------------
+g:SkyFilter                                                    *skyfilter-class*
+
+A helper class that helps us track ignores/includes and spit out parts of the rg
+command we will want to build. Note that there cannot be spaces in the preset,
+otherwise f-args won't parse the preset name you're trying to specify properly
+from the command.
+
+--------------------------------------------------------------------------------
+g:SkyFilter.default                                          *skyfilter-default*
+You can set the default filter to be used when a filter preset isn't
+specified by calling
+let g:SkyFilter.default = "<FILTERNAME>"
+
+--------------------------------------------------------------------------------
+g:SkyFilter.new(filter_name)                                     *skyfilter-new*
+
+Creates a new filter with the name `filter_name`
+
+Ex: Create a filter that does nothing. Not too impressive, but it's a start!
+
+    call g:SkyFilter.new("empty")
+    let g:SkyFilter.default = "c++"
+
+--------------------------------------------------------------------------------
+g:SkyFilter.include_filetypes([])                       *skyfilter-include-dirs*
+
+Adds the given filetypes to the search filter.
+Returns the filter that was modified, for chaining!
+
+If a filetype in the list was previously set to ignored, it will be overridden
+to be included by this function.
+
+Note that by specifically including any filetypes, the filter will ignore all
+filetypes not "included" at "search-time" by nature of how rg works.
+
+Ex: Create a filter that only searches within the c++ files in our hypothetical
+project, then sets it as the default baseline filter to use with SkyRG is
+called.
+
+    call g:SkyFilter.new("c++").include_filetypes(['cc', 'cpp', 'h'])
+    let g:SkyFilter.default = "c++"
+
+Ex: Equivalent to above
+    let cc_header_types = ['h']
+    let cc_body_types = ['cc', 'cpp']
+    call g:SkyFilter.new("c++")
+                  \ .include_filetypes(cc_header_types)
+                  \ .include_filetypes(cc_body_types)
+    let g:SkyFilter.default = "c++"
+
+
+--------------------------------------------------------------------------------
+g:SkyFilter.ignore_filetypes([])                    *skyfilter-ignore-filetypes*
+
+Updates the filter to ignore the filetype extensions given in the list argument.
+Returns the filter that was modified, for chaining!
+
+If a filetype in the list was previously set to include, it will be overridden
+to be ignored by this function.
+
+If any filetypes are explicitly "included" at "search-time", the ignored
+filetypes are pretty much unused by nature of how rg works.
+
+Ex: Create a filter that searches in every file, aside from the c++ files, in
+our hypothetical project.
+
+    call g:SkyFilter.new("anti_c++").ignore_filetypes(['cc', 'cpp', 'h'])
+    
+--------------------------------------------------------------------------------
+g:SkyFilter.include_dirs([])                            *skyfilter-include-dirs*
+
+Adds the given dirs to the search. Note that if this is not specified in any way
+rg will search in the current working directory, usually where vim was launched.
+
+If a directory in the list was previously set to ignored, it will be overridden
+to be included by this function.
+
+If any directories are explicitly "included" at "search-time", the search will
+only take place within those directories.
+
+Note that directories should not have the trailing slash in order to generate a
+proper rg command.
+
+Ex: Create a filter that searches only within the "build_rules" and
+"bloated_legacy_code" directories
+
+    call g:SkyFilter.new("mobile_dev")
+                  \ .include_filetypes(['swift', 'mm', 'kt', 'java'])
+                  \ .include_dirs(['mobile_app/ios', 'mobile_app/android'])
+
+--------------------------------------------------------------------------------
+g:SkyFilter.ignore_dirs([])                             *skyfilter-include-dirs*
+
+Removes the given dirs to the search.
+
+way rg will search in the current working directory, usually where vim was
+launched.
+
+A special consequence of how rg sets up globbing is that we can ignore any paths
+containins specific subsequences, by prepending a '**/' before the directory
+name. See example below
+
+Ex: Create a filter that ignores any and all files located within any 
+"node_module" subfolders we may have.
+
+    call g:SkyFilter.new("regain_sanity")
+                  \ .ignore_dirs(['**/node_modules'])
+                  \ .ignore_dirs(['**/build'])
+
+Note that the filter expands the directory to `**/node_modules/**` which is the
+globbing pattern we want.
+
+================================================================================
+TIPS                                                                *skyrg-tips*
+You will want to define your own command in your .vimrc.
+
+For example, in my vimrc, I have these command defined:
+
+    " calls SkyRG on everything that comes after ':RG'
+    command! -nargs=* -bang RG call SkyRG(<f-args>)
+    " calls SkyRG but forces everything to be interpreted as part of the query
+    command! -nargs=* -bang RGN call SkyRG('--', <f-args>)
+
+Then to search for `prism_t` in c++ and LCM files in a specific part of the
+codebase, I can call
+
+    :RG -f cc,lcm -d mobile/shared/mvvm,infrastructure/ar_video_shaders prism_t
+
+Next you may want to set up some filter presets in your .vimrc.
+
+As an example, here's a how to create a filter with all options. The
+ignore_filetypes is unnecessary in this example, but it gets the picture across.
+
+    let my_preset = g:SkyFilter.new("example")
+                             \ .include_filetypes(['cc', 'h', 'py'])
+                             \ .include_dirs(['some_submodule'])
+                             \ .ignore_filetypes(['vim', 'sh'])
+                             \ .ignore_dirs(['**/node_modules'])
+
+For example, assuming we're using using my example filter from above:
+
+     :RG -p example -f vim,vimrc,yaml -d other_submodule <QUERY>
+
+should allow us to search within *only* those filetypes (including 'vim'
+we previously ignored from the base) in the other_submodule given, while
+continuing to filter out '.sh' files and any and all 'node_modules'
+directories we may find along the way.
+
+Note that `include_filetypes` inherently "obsoletes" `ignore_filetypes` as those
+"ignored" types would have never been considered in the first place.
