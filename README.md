@@ -81,7 +81,7 @@ call g:SkyFilter.new("my_awesome_filter")
               \ .ignore_filetypes(['idk'])
               \ .ignore_dirs(['my_cool_project/lame_submodule'])
 ```
-Note that `include_filetypes` inherently hides `ignore_filetypes` based on how rg actually works (for example if we specifically included the types `['cc', 'h']` and ignored `['py', 'js']`, the ignores technically don't matter since they normally wouldn't match the include filetypes specifications anyways. Now I know you could probably break/abuse this if you took a look at the code and thought about it a bit, but ¯\_(ツ)_/¯
+Note that `include_filetypes` inherently hides `ignore_filetypes` based on how rg actually works (for example if we specifically included the types `['cc', 'h']` and ignored `['py', 'js']`, the ignores technically don't matter since they normally wouldn't match the include filetypes specifications anyways. Now I know you could probably break/abuse this if you took a look at the code and thought about it a bit, but ¯\\_(ツ)_/¯
 
 Once you have some filter presets, you can set the base preset that will RG will "default" to.
 ```
