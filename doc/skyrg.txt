@@ -191,14 +191,32 @@ Note that the filter expands the directory to `**/node_modules/**` which is the
 globbing pattern we want.
 
 ================================================================================
+TAB COMPLETION                                              *skyrg-completion*
+
+SkyRG provides context-aware tab completion via skyrg#complete#rg(). When
+enabled on your command definition, pressing <Tab> will complete:
+
+  Flags       -f, -Nf, -d, -Nd, -p, -- (when typing a new argument)
+  Presets     after -p, completes from g:SkyFilter.presets
+  Extensions  after -f / -Nf, completes from preset-registered extensions
+              (falls back to common defaults if no presets exist yet).
+              Comma-aware: typing -f cc,p<Tab> completes the segment after
+              the last comma.
+  Directories after -d / -Nd, globs from the current working directory.
+              Comma-aware and appends / for drilling down.
+
+After -- appears on the line, completion is disabled (rest is query).
+
+================================================================================
 TIPS                                                                *skyrg-tips*
 You will want to define your own command in your .vimrc.
 
 For example, in my vimrc, I have these command defined:
 
-    " calls skyrg#search on everything that comes after ':RG'
-    command! -nargs=* -bang RG call skyrg#search(<f-args>)
-    " forces everything to be interpreted as part of the query
+    " calls skyrg#search with tab completion for flags, presets, and paths
+    command! -nargs=* -bang -complete=customlist,skyrg#complete#rg
+          \ RG call skyrg#search(<f-args>)
+    " forces everything to be interpreted as part of the query (no completion)
     command! -nargs=* -bang RGN call skyrg#search('--', <f-args>)
 
 Then to search for `prism_t` in c++ and LCM files in a specific part of the
