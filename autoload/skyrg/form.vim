@@ -44,7 +44,8 @@ function! skyrg#form#open() abort
     \ }
 
   silent! call prop_type_delete('skyrg_cursor')
-  call prop_type_add('skyrg_cursor', {'highlight': 'TermCursor'})
+  let l:hl = hlexists('TermCursor') ? 'TermCursor' : (hlexists('Cursor') ? 'Cursor' : 'Visual')
+  call prop_type_add('skyrg_cursor', {'highlight': l:hl})
 
   let s:state.id = popup_create(s:render(), {
     \ 'title': ' SkyRG ',
@@ -158,17 +159,17 @@ function! s:render() abort
         \ {'col': l:cursor_col, 'length': 1, 'type': 'skyrg_cursor'}
         \ ]})
     else
-      call add(l:lines, l:text)
+      call add(l:lines, {'text': l:text})
     endif
   endfor
 
   " Context-sensitive hint
   let l:hint = s:get_hint()
-  call add(l:lines, '')
+  call add(l:lines, {'text': ''})
   if l:hint !=# ''
-    call add(l:lines, l:hint)
+    call add(l:lines, {'text': l:hint})
   endif
-  call add(l:lines, ' Tab: next  Enter: search  Esc: cancel')
+  call add(l:lines, {'text': ' Tab: next  Enter: search  Esc: cancel'})
 
   return l:lines
 endfunction
