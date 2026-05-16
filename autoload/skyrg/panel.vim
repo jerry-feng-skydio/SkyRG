@@ -3,6 +3,7 @@
 let s:QUERY = 0 | let s:TYPES = 1 | let s:DIRS = 2 | let s:PRESET = 3 | let s:GITIGN = 4
 let s:NFIELDS = 5
 let s:PANE_FORM = 0 | let s:PANE_RESULTS = 1
+let s:MODE_SEARCH = 'search' | let s:MODE_BROWSE = 'browse'
 let s:MAX_RESULTS = 500 | let s:PREVIEW_CTX = 10 | let s:SEARCH_DELAY = 300
 
 function! skyrg#panel#open() abort
@@ -11,6 +12,7 @@ function! skyrg#panel#open() abort
     return
   endif
   let s:state = {
+    \ 'mode': s:MODE_SEARCH,
     \ 'pane': s:PANE_FORM, 'field': s:QUERY, 'closing': 0, 'search_gen': 0,
     \ 'fields': [
     \   {'label': 'Query',  'value': '', 'pos': 0},
@@ -54,9 +56,96 @@ function! skyrg#panel#open() abort
     \ })
 endfunction
 
+"==============================================================================
+" Browse mode — display external results (e.g. YCM references)
+"==============================================================================
+" matches: list of {'file': path, 'line': nr, 'col': nr, 'text': str}
+" title: string shown in the results popup title
+function! skyrg#panel#browse(matches, title) abort
+  if !exists('*popup_create')
+    echohl ErrorMsg | echo '[SkyRG] Requires Vim 8.2+ with +popupwin' | echohl None
+    return
+  endif
+  let s:state = {
+    \ 'mode': s:MODE_BROWSE,
+    \ 'pane': s:PANE_RESULTS, 'field': 0, 'closing': 0, 'search_gen': 0,
+    \ 'fields': [],
+    \ 'matches': a:matches, 'result_idx': 0, 'res_scroll': 0,
+    \ 'form_id': 0, 'results_id': 0, 'preview_id': 0,
+    \ }
+  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
+    silent! call prop_type_delete(l:n)
+  endfor
+  let l:hl = hlexists('TermCursor') ? 'TermCursor' : 'Visual'
+  call prop_type_add('skyrg_cursor', {'highlight': l:hl})
+  call prop_type_add('skyrg_sel',    {'highlight': 'CursorLine'})
+  call prop_type_add('skyrg_match',  {'highlight': 'Search'})
+  let l:L = s:layout()
+  let l:bch = ['─','│','─','│','╭','╮','╯','╰']
+  let s:state.results_id = popup_create([{'text': '  Loading...'}], {
+    \ 'title': ' '.a:title.' ', 'border': [], 'borderchars': l:bch,
+    \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1], 'scrollbar': 1,
+    \ 'wrap': 0,
+    \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
+    \ 'minheight': l:L.rh, 'maxheight': l:L.rh,
+    \ 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
+    \ 'callback': function('s:on_close'),
+    \ })
+  let s:state.preview_id = popup_create([{'text': ''}], {
+    \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
+    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
+    \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
+    \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
+    \ })
+  call s:redraw_results()
+  call s:update_preview()
+endfunction
+
+" Grab YCM GoToReferences results and display in browse mode
+function! skyrg#panel#ycm_refs() abort
+  " Run GoToReferences — YCM populates the quickfix list
+  try
+    execute 'YcmCompleter GoToReferences'
+  catch
+    echohl ErrorMsg | echo '[SkyRG] YcmCompleter GoToReferences failed: '.v:exception | echohl None
+    return
+  endtry
+  let l:qf = getqflist()
+  if empty(l:qf)
+    echohl WarningMsg | echo '[SkyRG] No references found' | echohl None
+    return
+  endif
+  let l:matches = []
+  for l:item in l:qf
+    let l:file = bufname(l:item.bufnr)
+    if empty(l:file) | continue | endif
+    call add(l:matches, {
+      \ 'file': fnamemodify(l:file, ':p'),
+      \ 'line': l:item.lnum,
+      \ 'col': l:item.col,
+      \ 'text': trim(get(l:item, 'text', '')),
+      \ })
+  endfor
+  if empty(l:matches)
+    echohl WarningMsg | echo '[SkyRG] No references found' | echohl None
+    return
+  endif
+  call skyrg#panel#browse(l:matches, 'References ('.len(l:matches).')')
+endfunction
+
 function! s:layout() abort
   let l:W = &columns | let l:H = &lines
-  let l:fw = max([l:W - 6, 40]) | let l:fh = 7
+  let l:fw = max([l:W - 6, 40])
+  if s:state.mode ==# s:MODE_BROWSE
+    let l:fh = 0
+    let l:bh = max([l:H - 4, 6])
+    let l:rw = max([float2nr(l:fw * 0.45), 20])
+    let l:pw = max([l:fw - l:rw - 2, 20])
+    return {'fw':l:fw, 'fh':0, 'fr':0, 'fc':0,
+      \ 'rw':l:rw, 'rh':l:bh, 'rr':2, 'rc':3,
+      \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5}
+  endif
+  let l:fh = 7
   let l:bh = max([l:H - l:fh - 6, 6])
   let l:rw = max([float2nr(l:fw * 0.45), 20])
   let l:pw = max([l:fw - l:rw - 2, 20])
@@ -88,8 +177,8 @@ function! s:on_key(winid, key) abort
   if a:key ==# "\<Esc>"
     call s:close() | return 1
   endif
-  " Shift+Up / Shift+Down: switch panes
-  if a:key ==# "\<S-Up>" || a:key ==# "\<S-Down>"
+  " Shift+Up / Shift+Down: switch panes (search mode only)
+  if (a:key ==# "\<S-Up>" || a:key ==# "\<S-Down>") && s:state.mode ==# s:MODE_SEARCH
     call s:set_pane(s:state.pane == s:PANE_FORM ? s:PANE_RESULTS : s:PANE_FORM)
     return 1
   endif
@@ -102,6 +191,13 @@ function! s:on_key(winid, key) abort
   if a:key ==# "\<PageUp>" || a:key ==# "\<PageDown>"
     let l:page = s:layout().rh - 2
     call s:move_result(a:key ==# "\<PageUp>" ? -l:page : l:page)
+    return 1
+  endif
+  " Browse mode: only results navigation + Enter
+  if s:state.mode ==# s:MODE_BROWSE
+    if a:key ==# "\<CR>"
+      call s:jump_to_match()
+    endif
     return 1
   endif
   " Tab / S-Tab: field completion (Types/Dirs)
@@ -178,9 +274,11 @@ endfunction
 
 function! s:set_pane(p) abort
   let s:state.pane = a:p
-  call popup_setoptions(s:state.form_id,    {'borderhighlight': [a:p == s:PANE_FORM ? 'Title' : 'Comment']})
+  if s:state.form_id
+    call popup_setoptions(s:state.form_id,    {'borderhighlight': [a:p == s:PANE_FORM ? 'Title' : 'Comment']})
+  endif
   call popup_setoptions(s:state.results_id, {'borderhighlight': [a:p == s:PANE_RESULTS ? 'Title' : 'Comment']})
-  call s:redraw_form()
+  if s:state.form_id | call s:redraw_form() | endif
 endfunction
 
 "==============================================================================

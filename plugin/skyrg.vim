@@ -15,3 +15,5 @@ endif
 " Initialize the filter system
 call skyrg#filter#init()
 
+" Commands
+command! -nargs=0 YRefs call skyrg#panel#ycm_refs()
