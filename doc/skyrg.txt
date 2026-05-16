@@ -13,8 +13,8 @@ command buffer as well as define search filter presets in your .vimrc that you
 can specify as part of the command
 
 Requires:
- - the command ripgrep to be installed on your system
- - the vim plugin 'junngunn/fzf` to be installed
+ - ripgrep (rg) to be installed on your system
+ - the vim plugin 'junegunn/fzf.vim' to be installed
 
 ================================================================================
 COMMANDS                                                        *skyrg-commands*
@@ -28,12 +28,11 @@ SkyRG is not complex enough to come with its own commands, just a SkyRG function
 and a SkyFilter class.
 
 --------------------------------------------------------------------------------
-SkyRG(...)                                                      *skyrg-function*
+skyrg#search(...)                                               *skyrg-function*
 
-The only function in this plugin! Passes in some filtering options and a query
-for rg.
+The main search function. Passes in some filtering options and a query for rg.
 
-It takes am arbigrary list of function arguments and parses for flags/options
+It takes an arbitrary list of function arguments and parses for flags/options
 until it can't match a flag, at which it considers the rest of the argument list
 the actual search query to pass to rg.
 Note that all options must come before the query!
@@ -64,8 +63,8 @@ Options:
      - The pathing is assumed to be relative.
      - You should pass in directories without the trailing slash.
 
- -Nf) Specifically ignore directories listed in the next argument. Should be
-      passed in like a '-d' argument, but does not effect the 'root directories'
+ -Nd) Specifically ignore directories listed in the next argument. Should be
+      passed in like a '-d' argument, but does not affect the 'root directories'
       being searched.
 
  -p) Based off filtering presets defined in your vimrc.
@@ -197,10 +196,10 @@ You will want to define your own command in your .vimrc.
 
 For example, in my vimrc, I have these command defined:
 
-    " calls SkyRG on everything that comes after ':RG'
-    command! -nargs=* -bang RG call SkyRG(<f-args>)
-    " calls SkyRG but forces everything to be interpreted as part of the query
-    command! -nargs=* -bang RGN call SkyRG('--', <f-args>)
+    " calls skyrg#search on everything that comes after ':RG'
+    command! -nargs=* -bang RG call skyrg#search(<f-args>)
+    " forces everything to be interpreted as part of the query
+    command! -nargs=* -bang RGN call skyrg#search('--', <f-args>)
 
 Then to search for `prism_t` in c++ and LCM files in a specific part of the
 codebase, I can call
