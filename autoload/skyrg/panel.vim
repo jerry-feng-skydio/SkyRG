@@ -1,6 +1,7 @@
 " autoload/skyrg/panel.vim — Multi-pane search UI (form + results + preview)
 
-let s:QUERY = 0 | let s:TYPES = 1 | let s:DIRS = 2 | let s:PRESET = 3
+let s:QUERY = 0 | let s:TYPES = 1 | let s:DIRS = 2 | let s:PRESET = 3 | let s:GITIGN = 4
+let s:NFIELDS = 5
 let s:PANE_FORM = 0 | let s:PANE_RESULTS = 1
 let s:MAX_RESULTS = 500 | let s:PREVIEW_CTX = 10 | let s:SEARCH_DELAY = 300
 
@@ -16,6 +17,7 @@ function! skyrg#panel#open() abort
     \   {'label': 'Types',  'value': '', 'pos': 0},
     \   {'label': 'Dirs',   'value': '', 'pos': 0},
     \   {'label': 'Preset', 'value': '', 'pos': 0},
+    \   {'label': '.gitignore', 'value': 'on', 'pos': 0},
     \ ],
     \ 'matches': [], 'result_idx': 0, 'res_scroll': 0,
     \ 'form_id': 0, 'results_id': 0, 'preview_id': 0,
@@ -54,7 +56,7 @@ endfunction
 
 function! s:layout() abort
   let l:W = &columns | let l:H = &lines
-  let l:fw = max([l:W - 6, 40]) | let l:fh = 6
+  let l:fw = max([l:W - 6, 40]) | let l:fh = 7
   let l:bh = max([l:H - l:fh - 6, 6])
   let l:rw = max([float2nr(l:fw * 0.45), 20])
   let l:pw = max([l:fw - l:rw - 2, 20])
@@ -190,9 +192,12 @@ function! s:form_key(key) abort
   " Any non-Tab key resets the tab-cycle state
   if a:key !=# "\<Tab>" | call s:reset_tab_cycle() | endif
   if a:key ==# "\<C-Up>"
-    let s:state.field = (s:state.field - 1 + 4) % 4
+    let s:state.field = (s:state.field - 1 + s:NFIELDS) % s:NFIELDS
   elseif a:key ==# "\<C-Down>"
-    let s:state.field = (s:state.field + 1) % 4
+    let s:state.field = (s:state.field + 1) % s:NFIELDS
+  elseif s:state.field == s:GITIGN && a:key ==# ' '
+    let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
+    let l:changed = 1
   elseif a:key ==# "\<CR>"
     if has_key(s:state, 'timer') | call timer_stop(s:state.timer) | endif
     call s:run_search() | call s:redraw_form() | return 1
@@ -221,7 +226,7 @@ function! s:form_key(key) abort
     call s:del_word(l:f) | let l:changed = 1
   elseif (a:key ==# "\<C-n>" || a:key ==# "\<C-p>") && s:state.field == s:PRESET
     call s:cycle_preset(a:key ==# "\<C-n>" ? 1 : -1) | let l:changed = 1
-  elseif len(a:key) == 1 && char2nr(a:key) >= 32
+  elseif len(a:key) == 1 && char2nr(a:key) >= 32 && s:state.field != s:GITIGN
     let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
     let l:f.value = l:b . a:key . l:f.value[l:f.pos:]
     let l:f.pos += 1 | let l:changed = 1
@@ -246,19 +251,29 @@ endfunction
 "==============================================================================
 function! s:render_form() abort
   let l:lines = []
-  for l:i in range(4)
+  for l:i in range(s:NFIELDS)
     let l:f = s:state.fields[l:i]
     let l:act = l:i == s:state.field && s:state.pane == s:PANE_FORM
-    let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
-    let l:text = l:pfx . l:f.value . (l:act ? ' ' : '')
-    if l:act
-      call add(l:lines, {'text': l:text, 'props': [
-        \ {'col': len(l:pfx)+l:f.pos+1, 'length': 1, 'type': 'skyrg_cursor'}]})
+    if l:i == s:GITIGN
+      let l:chk = l:f.value ==# 'on' ? 'x' : ' '
+      let l:text = printf(' %s [%s] %s', l:act ? '>' : ' ', l:chk, l:f.label)
+      if l:act
+        call add(l:lines, {'text': l:text, 'props': [
+          \ {'col': 4, 'length': 3, 'type': 'skyrg_cursor'}]})
+      else
+        call add(l:lines, {'text': l:text})
+      endif
     else
-      call add(l:lines, {'text': l:text})
+      let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
+      let l:text = l:pfx . l:f.value . (l:act ? ' ' : '')
+      if l:act
+        call add(l:lines, {'text': l:text, 'props': [
+          \ {'col': len(l:pfx)+l:f.pos+1, 'length': 1, 'type': 'skyrg_cursor'}]})
+      else
+        call add(l:lines, {'text': l:text})
+      endif
     endif
   endfor
-  call add(l:lines, {'text': ''})
   call add(l:lines, s:hint())
   return l:lines
 endfunction
@@ -288,6 +303,9 @@ function! s:hint() abort
       return s:hint_with_hl(map(copy(l:cands), 'fnamemodify(v:val, ":.")'), 10)
     endif
     return {'text': '  e.g. src/,lib/  (Tab to complete, comma-separated)'}
+  endif
+  if l:lab ==# '.gitignore'
+    return {'text': '  Space: toggle  (rg respects .gitignore by default)'}
   endif
   return {'text': '  Up/Down: fields  Enter: search  S-Down: results  Esc: close'}
 endfunction
@@ -419,6 +437,10 @@ function! s:run_search() abort
   endif
   let l:cmd = ['rg', '--column', '--line-number', '--no-heading',
     \ '--color=never', '--smart-case', '--max-count=500']
+  " Apply .gitignore setting
+  if s:state.fields[s:GITIGN].value !=# 'on'
+    call add(l:cmd, '--no-ignore')
+  endif
   " Apply Types field
   for l:t in split(s:state.fields[s:TYPES].value, ',')
     let l:t = trim(l:t)
@@ -742,6 +764,14 @@ function! s:match_types(partial) abort
     call remove(l:chosen, -1)
     let l:all = filter(copy(l:all), 'index(l:chosen, v:val) < 0')
   endif
+  " When .gitignore is respected, hide types whose extensions are all ignored
+  if s:state.fields[s:GITIGN].value ==# 'on'
+    let l:gi_exts = s:gitignore_extensions()
+    if !empty(l:gi_exts)
+      let l:type_exts = s:rg_type_extensions()
+      let l:all = filter(l:all, '!s:type_fully_ignored(v:val, l:type_exts, l:gi_exts)')
+    endif
+  endif
   if empty(a:partial)
     return l:all
   endif
@@ -754,10 +784,62 @@ function! s:rg_type_names() abort
   if !empty(s:rg_types_cache)
     return s:rg_types_cache
   endif
-  let l:raw = systemlist('rg --type-list 2>/dev/null')
-  let s:rg_types_cache = map(l:raw, 'matchstr(v:val, "^[^:]*")')
-  call filter(s:rg_types_cache, '!empty(v:val)')
+  call s:parse_rg_type_list()
   return s:rg_types_cache
+endfunction
+
+" Cache rg type → extensions mapping (parsed once per session)
+let s:rg_type_ext_cache = {}
+function! s:rg_type_extensions() abort
+  if !empty(s:rg_type_ext_cache)
+    return s:rg_type_ext_cache
+  endif
+  call s:parse_rg_type_list()
+  return s:rg_type_ext_cache
+endfunction
+
+function! s:parse_rg_type_list() abort
+  if !empty(s:rg_types_cache) | return | endif
+  let l:raw = systemlist('rg --type-list 2>/dev/null')
+  for l:line in l:raw
+    let l:name = matchstr(l:line, '^[^:]*')
+    if empty(l:name) | continue | endif
+    call add(s:rg_types_cache, l:name)
+    let l:ext_str = matchstr(l:line, ':\s*\zs.*')
+    let s:rg_type_ext_cache[l:name] = map(split(l:ext_str, ',\s*'), 'substitute(v:val, "^\\*\\.", "", "")')
+  endfor
+endfunction
+
+" Parse .gitignore for extension-based ignore patterns (e.g. *.pyc → pyc)
+let s:gitignore_ext_cache = v:null
+function! s:gitignore_extensions() abort
+  if s:gitignore_ext_cache isnot v:null
+    return s:gitignore_ext_cache
+  endif
+  let s:gitignore_ext_cache = {}
+  let l:gi = findfile('.gitignore', '.;')
+  if empty(l:gi) | return s:gitignore_ext_cache | endif
+  for l:line in readfile(l:gi)
+    let l:line = trim(l:line)
+    if empty(l:line) || l:line[0] ==# '#' | continue | endif
+    " Match patterns like *.ext or **/*.ext (not negated)
+    if l:line[0] ==# '!' | continue | endif
+    let l:ext = matchstr(l:line, '^\%(\*\*/\)\?\*\.\zs[a-zA-Z0-9_+]\+$')
+    if !empty(l:ext)
+      let s:gitignore_ext_cache[l:ext] = 1
+    endif
+  endfor
+  return s:gitignore_ext_cache
+endfunction
+
+" Check if ALL extensions of a type are gitignored
+function! s:type_fully_ignored(type_name, type_exts, gi_exts) abort
+  let l:exts = get(a:type_exts, a:type_name, [])
+  if empty(l:exts) | return 0 | endif
+  for l:ext in l:exts
+    if !has_key(a:gi_exts, l:ext) | return 0 | endif
+  endfor
+  return 1
 endfunction
 
 function! s:reset_tab_cycle() abort
