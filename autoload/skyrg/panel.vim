@@ -110,6 +110,7 @@ function! skyrg#panel#ycm_refs() abort
     echohl ErrorMsg | echo '[SkyRG] YcmCompleter GoToReferences failed: '.v:exception | echohl None
     return
   endtry
+  cclose
   let l:qf = getqflist()
   if empty(l:qf)
     echohl WarningMsg | echo '[SkyRG] No references found' | echohl None
