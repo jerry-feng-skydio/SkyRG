@@ -13,7 +13,7 @@ function! skyrg#panel#open() abort
   endif
   let s:state = {
     \ 'mode': s:MODE_SEARCH,
-    \ 'pane': s:PANE_FORM, 'field': s:QUERY, 'closing': 0, 'search_gen': 0,
+    \ 'pane': s:PANE_FORM, 'field': s:QUERY, 'closing': 0, 'search_gen': 0, 
     \ 'fields': [
     \   {'label': 'Query',  'value': '', 'pos': 0},
     \   {'label': 'Types',  'value': '', 'pos': 0},
@@ -178,12 +178,7 @@ function! s:on_key(winid, key) abort
   if a:key ==# "\<Esc>"
     call s:close() | return 1
   endif
-  " Shift+Up / Shift+Down: switch panes (search mode only)
-  if (a:key ==# "\<S-Up>" || a:key ==# "\<S-Down>") && s:state.mode ==# s:MODE_SEARCH
-    call s:set_pane(s:state.pane == s:PANE_FORM ? s:PANE_RESULTS : s:PANE_FORM)
-    return 1
-  endif
-  " Up/Down: always move match selection
+  " Up/Down: move match selection
   if a:key ==# "\<Up>" || a:key ==# "\<Down>"
     call s:move_result(a:key ==# "\<Up>" ? -1 : 1)
     return 1
@@ -202,7 +197,7 @@ function! s:on_key(winid, key) abort
     return 1
   endif
   " Tab / S-Tab: field completion (Types/Dirs)
-  if (a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>") && s:state.pane == s:PANE_FORM
+  if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
     if s:state.field == s:DIRS || s:state.field == s:TYPES
       call s:complete_field(a:key ==# "\<S-Tab>" ? -1 : 1)
       call s:redraw_form()
@@ -210,7 +205,7 @@ function! s:on_key(winid, key) abort
     return 1
   endif
   " Ctrl+Left/Right: prev/next completion selection
-  if (a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>") && s:state.pane == s:PANE_FORM
+  if a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>"
     if s:state.field == s:DIRS || s:state.field == s:TYPES
       call s:complete_field(a:key ==# "\<C-Left>" ? -1 : 1)
       call s:redraw_form()
@@ -218,14 +213,14 @@ function! s:on_key(winid, key) abort
     return 1
   endif
   " Ctrl+Shift+Left/Right: jump to next selection with different first letter
-  if (a:key ==# "\<C-S-Left>" || a:key ==# "\<C-S-Right>") && s:state.pane == s:PANE_FORM
+  if a:key ==# "\<C-S-Left>" || a:key ==# "\<C-S-Right>"
     if s:state.field == s:DIRS || s:state.field == s:TYPES
       call s:complete_field_jump_letter(a:key ==# "\<C-S-Left>" ? -1 : 1)
       call s:redraw_form()
     endif
     return 1
   endif
-  return s:state.pane == s:PANE_FORM ? s:form_key(a:key) : s:results_key(a:key)
+  return s:form_key(a:key)
 endfunction
 
 function! s:move_result(dir) abort
@@ -298,8 +293,8 @@ function! s:form_key(key) abort
     let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
     let l:changed = 1
   elseif a:key ==# "\<CR>"
-    if has_key(s:state, 'timer') | call timer_stop(s:state.timer) | endif
-    call s:run_search() | call s:redraw_form() | return 1
+    call s:jump_to_match()
+    return 1
   elseif a:key ==# "\<Left>"
     let l:f.pos = max([0, l:f.pos - 1])
   elseif a:key ==# "\<Right>"
@@ -335,15 +330,6 @@ function! s:form_key(key) abort
   return 1
 endfunction
 
-"==============================================================================
-" Results key handling (Up/Down = navigate, Enter = jump)
-"==============================================================================
-function! s:results_key(key) abort
-  if a:key ==# "\<CR>"
-    call s:jump_to_match()
-  endif
-  return 1
-endfunction
 
 "==============================================================================
 " Form rendering
@@ -382,9 +368,6 @@ function! s:redraw_form() abort
 endfunction
 
 function! s:hint() abort
-  if s:state.pane == s:PANE_RESULTS
-    return {'text': '  S-Up/S-Down: form  Up/Down: navigate  Enter: open  Esc: close'}
-  endif
   let l:lab = s:state.fields[s:state.field].label
   if l:lab ==# 'Preset'
     let l:n = s:preset_names()
@@ -406,7 +389,7 @@ function! s:hint() abort
   if l:lab ==# '.gitignore'
     return {'text': '  Space: toggle  (rg respects .gitignore by default)'}
   endif
-  return {'text': '  Up/Down: fields  Enter: search  S-Down: results  Esc: close'}
+  return {'text': '  C-Up/C-Down: fields  Up/Down: matches  Enter: open  Esc: close'}
 endfunction
 
 function! s:hint_with_hl(cands, max_show) abort
