@@ -1,5 +1,8 @@
 " autoload/skyrg/panel/tree.vim — Directory tree panel
 "
+" Owns state.tree: {open, idx, nodes, expanded, filter, tab_mode, tab_base,
+"                   no_matches, scroll}
+"
 " Provides a navigable directory tree for selecting search directories.
 " Features: expand/collapse, prefix search, tab completion, pinned ancestors.
 
@@ -13,26 +16,27 @@ let s:TREE_SEARCH_MODE = s:TREE_SEARCH_NORMAL
 function! skyrg#panel#tree#toggle(open) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
-  let l:s.tree_open = a:open
+  let l:t = l:s.tree
+  let l:t.open = a:open
   if a:open
-    if empty(l:s.tree_nodes)
+    if empty(l:t.nodes)
       call skyrg#panel#tree#init()
     else
       call skyrg#panel#tree#redraw()
     endif
-    call popup_show(l:s.tree_id)
+    call popup_show(l:s.popups.tree)
     call skyrg#panel#set_pane(l:c.PANE_TREE)
   else
-    call popup_hide(l:s.tree_id)
+    call popup_hide(l:s.popups.tree)
     call skyrg#panel#set_pane(l:c.PANE_FORM)
   endif
   call skyrg#panel#reposition_popups()
 endfunction
 
 function! skyrg#panel#tree#init() abort
-  let l:s = skyrg#panel#state()
-  let l:s.tree_expanded = {}
-  let l:s.tree_idx = 0
+  let l:t = skyrg#panel#state().tree
+  let l:t.expanded = {}
+  let l:t.idx = 0
   call s:rebuild()
 endfunction
 
@@ -62,38 +66,36 @@ endfunction
 "==============================================================================
 " Each node: {'path': abs_path, 'depth': int, 'is_dir': bool, 'name': str}
 function! s:rebuild() abort
-  let l:s = skyrg#panel#state()
+  let l:t = skyrg#panel#state().tree
   let l:root = getcwd()
-  let l:s.tree_nodes = []
+  let l:t.nodes = []
   call s:walk(l:root, 0)
-  if l:s.tree_idx >= len(l:s.tree_nodes)
-    let l:s.tree_idx = max([0, len(l:s.tree_nodes) - 1])
+  if l:t.idx >= len(l:t.nodes)
+    let l:t.idx = max([0, len(l:t.nodes) - 1])
   endif
   call skyrg#panel#tree#redraw()
 endfunction
 
 function! s:walk(dir, depth) abort
-  let l:s = skyrg#panel#state()
+  let l:t = skyrg#panel#state().tree
   let l:children = s:tree_ls(a:dir)
   let l:expanded_child = ''
   for l:p in l:children
-    if has_key(l:s.tree_expanded, l:p)
+    if has_key(l:t.expanded, l:p)
       let l:expanded_child = l:p
       break
     endif
   endfor
   if !empty(l:expanded_child)
-    " Only show the expanded child (siblings hidden)
     let l:is_dir = isdirectory(l:expanded_child)
-    call add(l:s.tree_nodes, {
+    call add(l:t.nodes, {
       \ 'path': l:expanded_child, 'depth': a:depth,
       \ 'is_dir': l:is_dir, 'name': fnamemodify(l:expanded_child, ':t')})
     if l:is_dir
       call s:walk(l:expanded_child, a:depth + 1)
     endif
   else
-    " Leaf level: filter children by tree_filter
-    let l:filt = get(l:s, 'tree_filter', '')
+    let l:filt = l:t.filter
     let l:matched = 0
     for l:p in l:children
       let l:name = fnamemodify(l:p, ':t')
@@ -101,12 +103,12 @@ function! s:walk(dir, depth) abort
         continue
       endif
       let l:is_dir = isdirectory(l:p)
-      call add(l:s.tree_nodes, {
+      call add(l:t.nodes, {
         \ 'path': l:p, 'depth': a:depth,
         \ 'is_dir': l:is_dir, 'name': l:name})
       let l:matched += 1
     endfor
-    let l:s.tree_no_matches = (!empty(l:filt) && l:matched == 0)
+    let l:t.no_matches = (!empty(l:filt) && l:matched == 0)
   endif
 endfunction
 
@@ -114,10 +116,10 @@ endfunction
 " Helpers
 "==============================================================================
 function! s:deepest_parent() abort
-  let l:s = skyrg#panel#state()
+  let l:t = skyrg#panel#state().tree
   let l:best = -1
-  for l:i in range(len(l:s.tree_nodes))
-    if has_key(l:s.tree_expanded, l:s.tree_nodes[l:i].path)
+  for l:i in range(len(l:t.nodes))
+    if has_key(l:t.expanded, l:t.nodes[l:i].path)
       let l:best = l:i
     endif
   endfor
@@ -125,19 +127,19 @@ function! s:deepest_parent() abort
 endfunction
 
 function! s:matching_indices() abort
-  let l:s = skyrg#panel#state()
+  let l:t = skyrg#panel#state().tree
   let l:result = []
   let l:leaf_depth = -1
-  for l:n in l:s.tree_nodes
-    if !has_key(l:s.tree_expanded, l:n.path)
+  for l:n in l:t.nodes
+    if !has_key(l:t.expanded, l:n.path)
       let l:leaf_depth = l:n.depth
       break
     endif
   endfor
   if l:leaf_depth < 0 | return l:result | endif
-  for l:i in range(len(l:s.tree_nodes))
-    let l:n = l:s.tree_nodes[l:i]
-    if l:n.depth == l:leaf_depth && !has_key(l:s.tree_expanded, l:n.path)
+  for l:i in range(len(l:t.nodes))
+    let l:n = l:t.nodes[l:i]
+    if l:n.depth == l:leaf_depth && !has_key(l:t.expanded, l:n.path)
       call add(l:result, l:i)
     endif
   endfor
@@ -153,15 +155,15 @@ function! s:match(name, filt) abort
 endfunction
 
 function! s:rebuild_and_select_first() abort
-  let l:s = skyrg#panel#state()
+  let l:t = skyrg#panel#state().tree
   call s:rebuild()
   let l:matches = s:matching_indices()
   if !empty(l:matches)
-    let l:s.tree_idx = l:matches[0]
+    let l:t.idx = l:matches[0]
   else
     let l:pi = s:deepest_parent()
     if l:pi >= 0
-      let l:s.tree_idx = l:pi
+      let l:t.idx = l:pi
     endif
   endif
   call skyrg#panel#tree#redraw()
@@ -169,17 +171,17 @@ endfunction
 
 " Expand a directory node and move cursor to first child
 function! s:expand_node(node) abort
-  let l:s = skyrg#panel#state()
-  let l:s.tree_filter = ''
-  let l:s.tree_tab_mode = 0
-  let l:s.tree_expanded[a:node.path] = 1
+  let l:t = skyrg#panel#state().tree
+  let l:t.filter = ''
+  let l:t.tab_mode = 0
+  let l:t.expanded[a:node.path] = 1
   call s:rebuild()
-  for l:i in range(len(l:s.tree_nodes))
-    if l:s.tree_nodes[l:i].path ==# a:node.path
-      let l:s.tree_idx = l:i
-      if l:i + 1 < len(l:s.tree_nodes)
-            \ && l:s.tree_nodes[l:i + 1].depth > l:s.tree_nodes[l:i].depth
-        let l:s.tree_idx = l:i + 1
+  for l:i in range(len(l:t.nodes))
+    if l:t.nodes[l:i].path ==# a:node.path
+      let l:t.idx = l:i
+      if l:i + 1 < len(l:t.nodes)
+            \ && l:t.nodes[l:i + 1].depth > l:t.nodes[l:i].depth
+        let l:t.idx = l:i + 1
       endif
       break
     endif
@@ -189,14 +191,14 @@ endfunction
 
 " Collapse a directory node and keep cursor on it
 function! s:collapse_node(node) abort
-  let l:s = skyrg#panel#state()
-  let l:s.tree_filter = ''
-  let l:s.tree_tab_mode = 0
-  call remove(l:s.tree_expanded, a:node.path)
+  let l:t = skyrg#panel#state().tree
+  let l:t.filter = ''
+  let l:t.tab_mode = 0
+  call remove(l:t.expanded, a:node.path)
   call s:rebuild()
-  for l:i in range(len(l:s.tree_nodes))
-    if l:s.tree_nodes[l:i].path ==# a:node.path
-      let l:s.tree_idx = l:i
+  for l:i in range(len(l:t.nodes))
+    if l:t.nodes[l:i].path ==# a:node.path
+      let l:t.idx = l:i
       break
     endif
   endfor
@@ -207,71 +209,63 @@ endfunction
 " Rendering
 "==============================================================================
 function! s:add_line(lines, idx) abort
-  let l:s = skyrg#panel#state()
-  let l:n = l:s.tree_nodes[a:idx]
+  let l:t = skyrg#panel#state().tree
+  let l:n = l:t.nodes[a:idx]
   let l:indent = repeat('  ', l:n.depth)
-  let l:icon = l:n.is_dir ? (has_key(l:s.tree_expanded, l:n.path) ? '▼ ' : '▶ ') : '  '
+  let l:icon = l:n.is_dir ? (has_key(l:t.expanded, l:n.path) ? '▼ ' : '▶ ') : '  '
   let l:text = l:indent . l:icon . l:n.name . (l:n.is_dir ? '/' : '')
-  if a:idx == l:s.tree_idx
-    call add(a:lines, {'text': l:text, 'props': [
-      \ {'col': 1, 'length': len(l:text), 'type': 'skyrg_sel'}]})
-  else
-    call add(a:lines, {'text': l:text})
-  endif
+  call add(a:lines, a:idx == l:t.idx
+    \ ? skyrg#panel#util#hl_line(l:text, 'skyrg_sel')
+    \ : skyrg#panel#util#line(l:text))
 endfunction
 
 function! s:render_searchbar(lines, L) abort
-  let l:s = skyrg#panel#state()
-  let l:filt = get(l:s, 'tree_filter', '')
-  if l:s.tree_tab_mode
-    let l:bar = ' >' . l:filt
-    call add(a:lines, {'text': l:bar})
+  let l:t = skyrg#panel#state().tree
+  let l:filt = l:t.filter
+  if l:t.tab_mode
+    call add(a:lines, skyrg#panel#util#line(' >' . l:filt))
   else
     let l:bar = ' >' . l:filt
     let l:cpos = len(l:bar) + 1
     call add(a:lines, {'text': l:bar . ' ', 'props': [
       \ {'col': l:cpos, 'length': 1, 'type': 'skyrg_cursor'}]})
   endif
-  call add(a:lines, {'text': repeat('─', a:L.tw - 2)})
+  call add(a:lines, skyrg#panel#util#line(repeat('─', a:L.tw - 2)))
 endfunction
 
 function! skyrg#panel#tree#redraw() abort
   let l:s = skyrg#panel#state()
-  if !l:s.tree_id | return | endif
+  let l:t = l:s.tree
+  if !l:s.popups.tree | return | endif
   let l:L = skyrg#panel#get_layout()
-  " Search bar (2 lines) + project root (1 line) at top = 3 fixed lines
   let l:vis = l:L.th - 4
   let l:lines = []
-  " 1. Search bar at top
   call s:render_searchbar(l:lines, l:L)
-  " 2. Project root
-  call add(l:lines, {'text': ' ' . getcwd()})
-  " Handle no-matches: show parent selected + "(no matches)" hint
-  if l:s.tree_no_matches || empty(l:s.tree_nodes)
-    for l:i in range(len(l:s.tree_nodes))
+  call add(l:lines, skyrg#panel#util#line(' ' . getcwd()))
+  if l:t.no_matches || empty(l:t.nodes)
+    for l:i in range(len(l:t.nodes))
       call s:add_line(l:lines, l:i)
     endfor
-    call add(l:lines, {'text': '     (no matches)'})
-    call popup_settext(l:s.tree_id, l:lines)
+    call add(l:lines, skyrg#panel#util#line('     (no matches)'))
+    call popup_settext(l:s.popups.tree, l:lines)
     let l:pi = s:deepest_parent()
     if l:pi >= 0
-      let l:s.tree_idx = l:pi
-      let l:rel = fnamemodify(l:s.tree_nodes[l:pi].path, ':.')
-      call popup_setoptions(l:s.tree_id, {'title': ' '.l:rel.' '})
+      let l:t.idx = l:pi
+      let l:rel = fnamemodify(l:t.nodes[l:pi].path, ':.')
+      call popup_setoptions(l:s.popups.tree, {'title': ' '.l:rel.' '})
     else
-      call popup_setoptions(l:s.tree_id, {'title': ' Tree '})
+      call popup_setoptions(l:s.popups.tree, {'title': ' Tree '})
     endif
     return
   endif
-  " Split rendering: pinned ancestors + scrollable siblings
-  let l:sel_depth = l:s.tree_nodes[l:s.tree_idx].depth
+  let l:sel_depth = l:t.nodes[l:t.idx].depth
   let l:ancestors = []
   if l:sel_depth > 0
     let l:d = l:sel_depth
-    for l:j in range(l:s.tree_idx - 1, 0, -1)
-      if l:s.tree_nodes[l:j].depth < l:d
+    for l:j in range(l:t.idx - 1, 0, -1)
+      if l:t.nodes[l:j].depth < l:d
         call insert(l:ancestors, l:j)
-        let l:d = l:s.tree_nodes[l:j].depth
+        let l:d = l:t.nodes[l:j].depth
       endif
       if l:d == 0 | break | endif
     endfor
@@ -280,13 +274,13 @@ function! skyrg#panel#tree#redraw() abort
   let l:sib_end = -1
   if empty(l:ancestors)
     let l:sib_start = 0
-    let l:sib_end = len(l:s.tree_nodes) - 1
+    let l:sib_end = len(l:t.nodes) - 1
   else
     let l:parent_idx = l:ancestors[-1]
     let l:sib_start = l:parent_idx + 1
-    let l:sib_end = len(l:s.tree_nodes) - 1
-    for l:j in range(l:sib_start, len(l:s.tree_nodes) - 1)
-      if l:s.tree_nodes[l:j].depth < l:sel_depth
+    let l:sib_end = len(l:t.nodes) - 1
+    for l:j in range(l:sib_start, len(l:t.nodes) - 1)
+      if l:t.nodes[l:j].depth < l:sel_depth
         let l:sib_end = l:j - 1
         break
       endif
@@ -296,22 +290,22 @@ function! skyrg#panel#tree#redraw() abort
     call s:add_line(l:lines, l:ai)
   endfor
   let l:sib_vis = l:vis - len(l:ancestors)
-  let l:sib_scroll = get(l:s, 'tree_scroll', l:sib_start)
+  let l:sib_scroll = get(l:t, 'scroll', l:sib_start)
   let l:sib_scroll = max([l:sib_start, min([l:sib_scroll, l:sib_end])])
-  if l:s.tree_idx < l:sib_scroll
-    let l:sib_scroll = l:s.tree_idx
-  elseif l:s.tree_idx >= l:sib_scroll + l:sib_vis
-    let l:sib_scroll = l:s.tree_idx - l:sib_vis + 1
+  if l:t.idx < l:sib_scroll
+    let l:sib_scroll = l:t.idx
+  elseif l:t.idx >= l:sib_scroll + l:sib_vis
+    let l:sib_scroll = l:t.idx - l:sib_vis + 1
   endif
   let l:sib_scroll = max([l:sib_start, l:sib_scroll])
-  let l:s.tree_scroll = l:sib_scroll
+  let l:t.scroll = l:sib_scroll
   for l:i in range(l:sib_scroll, min([l:sib_scroll + l:sib_vis - 1, l:sib_end]))
     call s:add_line(l:lines, l:i)
   endfor
-  call popup_settext(l:s.tree_id, l:lines)
-  let l:node = l:s.tree_nodes[l:s.tree_idx]
+  call popup_settext(l:s.popups.tree, l:lines)
+  let l:node = l:t.nodes[l:t.idx]
   let l:rel = fnamemodify(l:node.path, ':.')
-  call popup_setoptions(l:s.tree_id, {'title': ' '.l:rel.' '})
+  call popup_setoptions(l:s.popups.tree, {'title': ' '.l:rel.' '})
 endfunction
 
 "==============================================================================
@@ -320,22 +314,23 @@ endfunction
 function! skyrg#panel#tree#on_key(key) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  let l:t = l:s.tree
   " --- Backspace ---
   if a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127)
-    if l:s.tree_tab_mode
-      let l:s.tree_tab_mode = 0
-      let l:s.tree_filter = l:s.tree_tab_base
+    if l:t.tab_mode
+      let l:t.tab_mode = 0
+      let l:t.filter = l:t.tab_base
       call s:rebuild_and_select_first()
-    elseif !empty(l:s.tree_filter)
-      let l:s.tree_filter = l:s.tree_filter[:-2]
+    elseif !empty(l:t.filter)
+      let l:t.filter = l:t.filter[:-2]
       call s:rebuild_and_select_first()
     endif
     return 1
   endif
   " --- Ctrl+U: clear filter ---
   if a:key ==# "\<C-u>"
-    let l:s.tree_filter = ''
-    let l:s.tree_tab_mode = 0
+    let l:t.filter = ''
+    let l:t.tab_mode = 0
     call s:rebuild_and_select_first()
     return 1
   endif
@@ -343,27 +338,26 @@ function! skyrg#panel#tree#on_key(key) abort
   if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
     let l:matches = s:matching_indices()
     if empty(l:matches) | return 1 | endif
-    if !l:s.tree_tab_mode
-      let l:s.tree_tab_mode = 1
-      let l:s.tree_tab_base = l:s.tree_filter
+    if !l:t.tab_mode
+      let l:t.tab_mode = 1
+      let l:t.tab_base = l:t.filter
     endif
-    let l:cur = index(l:matches, l:s.tree_idx)
+    let l:cur = index(l:matches, l:t.idx)
     if a:key ==# "\<Tab>"
       let l:next = l:cur < 0 ? 0 : (l:cur + 1) % len(l:matches)
     else
       let l:next = l:cur <= 0 ? len(l:matches) - 1 : l:cur - 1
     endif
-    let l:s.tree_idx = l:matches[l:next]
-    let l:s.tree_filter = l:s.tree_nodes[l:s.tree_idx].name
+    let l:t.idx = l:matches[l:next]
+    let l:t.filter = l:t.nodes[l:t.idx].name
     call skyrg#panel#tree#redraw()
     return 1
   endif
   " --- Right: expand selected folder ---
   if a:key ==# "\<Right>"
-    let l:nodes = l:s.tree_nodes
-    if !empty(l:nodes)
-      let l:node = l:nodes[l:s.tree_idx]
-      if l:node.is_dir && !has_key(l:s.tree_expanded, l:node.path)
+    if !empty(l:t.nodes)
+      let l:node = l:t.nodes[l:t.idx]
+      if l:node.is_dir && !has_key(l:t.expanded, l:node.path)
         call s:expand_node(l:node)
       endif
     endif
@@ -373,37 +367,36 @@ function! skyrg#panel#tree#on_key(key) abort
   if a:key ==# "\<Left>"
     let l:pi = s:deepest_parent()
     if l:pi >= 0
-      let l:s.tree_idx = l:pi
-      let l:s.tree_tab_mode = 0
-      let l:s.tree_filter = ''
+      let l:t.idx = l:pi
+      let l:t.tab_mode = 0
+      let l:t.filter = ''
       call skyrg#panel#tree#redraw()
     endif
     return 1
   endif
-  let l:nodes = l:s.tree_nodes
   " Allow typing even when tree is empty (no matches)
-  if empty(l:nodes) || l:s.tree_no_matches
+  if empty(l:t.nodes) || l:t.no_matches
     if len(a:key) == 1 && char2nr(a:key) >= 32
-      let l:s.tree_tab_mode = 0
-      let l:s.tree_filter .= a:key
+      let l:t.tab_mode = 0
+      let l:t.filter .= a:key
       call s:rebuild_and_select_first()
     endif
     return 1
   endif
-  let l:node = l:nodes[l:s.tree_idx]
+  let l:node = l:t.nodes[l:t.idx]
   " --- Up/Down: navigate ---
   if a:key ==# "\<Up>" || a:key ==# "\<C-Up>"
-    let l:s.tree_idx = max([0, l:s.tree_idx - 1])
-    let l:s.tree_tab_mode = 0
+    let l:t.idx = max([0, l:t.idx - 1])
+    let l:t.tab_mode = 0
     call skyrg#panel#tree#redraw()
   elseif a:key ==# "\<Down>" || a:key ==# "\<C-Down>"
-    let l:s.tree_idx = min([len(l:nodes) - 1, l:s.tree_idx + 1])
-    let l:s.tree_tab_mode = 0
+    let l:t.idx = min([len(l:t.nodes) - 1, l:t.idx + 1])
+    let l:t.tab_mode = 0
     call skyrg#panel#tree#redraw()
   " --- Space: expand or collapse directory ---
   elseif a:key ==# ' '
     if l:node.is_dir
-      if has_key(l:s.tree_expanded, l:node.path)
+      if has_key(l:t.expanded, l:node.path)
         call s:collapse_node(l:node)
       else
         call s:expand_node(l:node)
@@ -411,8 +404,8 @@ function! skyrg#panel#tree#on_key(key) abort
     endif
   " --- Typing: search mode ---
   elseif len(a:key) == 1 && char2nr(a:key) >= 33
-    let l:s.tree_tab_mode = 0
-    let l:s.tree_filter .= a:key
+    let l:t.tab_mode = 0
+    let l:t.filter .= a:key
     call s:rebuild_and_select_first()
   " --- Enter: paste path into Dirs and close tree ---
   elseif a:key ==# "\<CR>"
@@ -420,10 +413,10 @@ function! skyrg#panel#tree#on_key(key) abort
     if l:node.is_dir
       let l:rel = l:rel . '/'
     endif
-    let l:f = l:s.fields[l:c.DIRS]
+    let l:f = l:s.form.fields[l:c.DIRS]
     let l:f.value = l:rel
     let l:f.pos = len(l:f.value)
-    let l:s.field = l:c.DIRS
+    let l:s.form.field = l:c.DIRS
     call skyrg#panel#tree#toggle(0)
     call skyrg#panel#form#redraw()
     call skyrg#panel#search#schedule()

@@ -1,4 +1,6 @@
 " autoload/skyrg/panel/form.vim — Form rendering and key handling
+"
+" Owns state.form: {field, fields}
 
 "==============================================================================
 " Key handling
@@ -6,29 +8,30 @@
 function! skyrg#panel#form#on_key(key) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
-  let l:f = l:s.fields[l:s.field]
+  let l:fm = l:s.form
+  let l:f = l:fm.fields[l:fm.field]
   let l:changed = 0
   " Any non-Tab key resets the tab-cycle state
   if a:key !=# "\<Tab>" | call skyrg#panel#complete#reset_tab_cycle() | endif
   if a:key ==# "\<C-Up>"
-    let l:s.field = (l:s.field - 1 + l:c.NFIELDS) % l:c.NFIELDS
+    let l:fm.field = (l:fm.field - 1 + l:c.NFIELDS) % l:c.NFIELDS
   elseif a:key ==# "\<C-Down>"
-    let l:s.field = (l:s.field + 1) % l:c.NFIELDS
-  elseif l:s.field == l:c.PRESET && (a:key ==# "\<Left>" || a:key ==# "\<Right>")
+    let l:fm.field = (l:fm.field + 1) % l:c.NFIELDS
+  elseif l:fm.field == l:c.PRESET && (a:key ==# "\<Left>" || a:key ==# "\<Right>")
     call skyrg#panel#preset#cycle(a:key ==# "\<Right>" ? 1 : -1)
     let l:changed = 1
-  elseif l:s.field == l:c.PRESET && (a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127))
+  elseif l:fm.field == l:c.PRESET && (a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127))
     let l:f.value = '' | let l:f.pos = 0
-    let l:s.fields[l:c.TYPES].value = ''
-    let l:s.fields[l:c.TYPES].pos = 0
-    let l:s.fields[l:c.DIRS].value = ''
-    let l:s.fields[l:c.DIRS].pos = 0
+    let l:fm.fields[l:c.TYPES].value = ''
+    let l:fm.fields[l:c.TYPES].pos = 0
+    let l:fm.fields[l:c.DIRS].value = ''
+    let l:fm.fields[l:c.DIRS].pos = 0
     let l:changed = 1
-  elseif l:s.field == l:c.PRESET
+  elseif l:fm.field == l:c.PRESET
     " Block all other input on Preset field
     call skyrg#panel#form#redraw()
     return 1
-  elseif l:s.field == l:c.GITIGN && a:key ==# ' '
+  elseif l:fm.field == l:c.GITIGN && a:key ==# ' '
     let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
     let l:changed = 1
   elseif a:key ==# "\<CR>"
@@ -57,9 +60,9 @@ function! skyrg#panel#form#on_key(key) abort
     let l:f.value = '' | let l:f.pos = 0 | let l:changed = 1
   elseif a:key ==# "\<C-w>" || a:key ==# "\<S-BS>"
     call skyrg#panel#util#del_word(l:f) | let l:changed = 1
-  elseif (a:key ==# "\<C-n>" || a:key ==# "\<C-p>") && l:s.field == l:c.PRESET
+  elseif (a:key ==# "\<C-n>" || a:key ==# "\<C-p>") && l:fm.field == l:c.PRESET
     call skyrg#panel#preset#cycle(a:key ==# "\<C-n>" ? 1 : -1) | let l:changed = 1
-  elseif len(a:key) == 1 && char2nr(a:key) >= 32 && l:s.field != l:c.GITIGN
+  elseif len(a:key) == 1 && char2nr(a:key) >= 32 && l:fm.field != l:c.GITIGN
     let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
     let l:f.value = l:b . a:key . l:f.value[l:f.pos:]
     let l:f.pos += 1 | let l:changed = 1
@@ -75,10 +78,11 @@ endfunction
 function! skyrg#panel#form#render() abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  let l:fm = l:s.form
   let l:lines = []
   for l:i in range(l:c.NFIELDS)
-    let l:f = l:s.fields[l:i]
-    let l:act = l:i == l:s.field && l:s.pane == l:c.PANE_FORM
+    let l:f = l:fm.fields[l:i]
+    let l:act = l:i == l:fm.field && l:s.pane == l:c.PANE_FORM
     if l:i == l:c.GITIGN
       let l:chk = l:f.value ==# 'on' ? 'x' : ' '
       let l:text = printf(' %s [%s] %s', l:act ? '>' : ' ', l:chk, l:f.label)
@@ -115,7 +119,7 @@ endfunction
 
 function! skyrg#panel#form#redraw() abort
   let l:s = skyrg#panel#state()
-  call popup_settext(l:s.form_id, skyrg#panel#form#render())
+  call popup_settext(l:s.popups.form, skyrg#panel#form#render())
 endfunction
 
 "==============================================================================
@@ -124,7 +128,8 @@ endfunction
 function! s:hint() abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
-  let l:lab = l:s.fields[l:s.field].label
+  let l:fm = l:s.form
+  let l:lab = l:fm.fields[l:fm.field].label
   if l:lab ==# 'Preset'
     let l:n = skyrg#panel#preset#names()
     let l:t = empty(l:n) ? '  No presets' : '  Left/Right: cycle  Backspace: reset'

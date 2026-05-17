@@ -4,12 +4,12 @@
 " Unified dispatcher
 "==============================================================================
 function! skyrg#panel#complete#field(...) abort
-  let l:s = skyrg#panel#state()
+  let l:fm = skyrg#panel#state().form
   let l:c = skyrg#panel#const()
   let l:dir = get(a:, 1, 1)
-  if l:s.field == l:c.DIRS
+  if l:fm.field == l:c.DIRS
     call s:complete_dirs(l:dir)
-  elseif l:s.field == l:c.TYPES
+  elseif l:fm.field == l:c.TYPES
     call s:complete_types(l:dir)
   endif
 endfunction
@@ -17,6 +17,7 @@ endfunction
 function! skyrg#panel#complete#jump_letter(dir) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  let l:fm = l:s.form
   if !get(l:s, 'tab_cycling', 0) || empty(get(l:s, 'tab_candidates', []))
     call skyrg#panel#complete#field(a:dir)
     return
@@ -32,8 +33,8 @@ function! skyrg#panel#complete#jump_letter(dir) abort
     endif
   endwhile
   let l:s.tab_idx = l:idx
-  let l:f = l:s.fields[l:s.field]
-  if l:s.field == l:c.DIRS
+  let l:f = l:fm.fields[l:fm.field]
+  if l:fm.field == l:c.DIRS
     let l:parts = split(l:f.value, ',', 1)
     let l:prev_len = 0
     for l:i in range(len(l:parts) - 1)
@@ -43,7 +44,7 @@ function! skyrg#panel#complete#jump_letter(dir) abort
     let l:s.dir_candidates = l:cands
     let l:f.value = join(l:parts, ',')
     let l:f.pos = l:prev_len + len(l:parts[-1]) - 1
-  elseif l:s.field == l:c.TYPES
+  elseif l:fm.field == l:c.TYPES
     let l:val = l:f.value
     if len(l:val) > 0 && l:val[-1:] ==# ',' | let l:val = l:val[:-2] | endif
     let l:parts = split(l:val, ',', 1)
@@ -68,7 +69,7 @@ endfunction
 function! s:complete_dirs(dir) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
-  let l:f = l:s.fields[l:c.DIRS]
+  let l:f = l:s.form.fields[l:c.DIRS]
   let l:parts = split(l:f.value, ',', 1)
 
   let l:prev_len = 0
@@ -150,7 +151,7 @@ endfunction
 function! s:complete_types(dir) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
-  let l:f = l:s.fields[l:c.TYPES]
+  let l:f = l:s.form.fields[l:c.TYPES]
   let l:parts = split(l:f.value, ',', 1)
 
   let l:prev_len = 0
@@ -219,15 +220,16 @@ endfunction
 function! s:match_types(partial) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  let l:fm = l:s.form
   let l:all = s:rg_type_names()
-  let l:val = l:s.fields[l:c.TYPES].value
+  let l:val = l:fm.fields[l:c.TYPES].value
   if l:val[-1:] ==# ',' | let l:val = l:val[:-2] | endif
   let l:chosen = map(split(l:val, ','), 'trim(v:val)')
   if !empty(l:chosen)
     call remove(l:chosen, -1)
     let l:all = filter(copy(l:all), 'index(l:chosen, v:val) < 0')
   endif
-  if l:s.fields[l:c.GITIGN].value ==# 'on'
+  if l:fm.fields[l:c.GITIGN].value ==# 'on'
     let l:gi_exts = s:gitignore_extensions()
     if !empty(l:gi_exts)
       let l:type_exts = s:rg_type_extensions()

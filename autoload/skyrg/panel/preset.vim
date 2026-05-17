@@ -19,29 +19,29 @@ function! skyrg#panel#preset#get_sky_filter(name) abort
 endfunction
 
 function! skyrg#panel#preset#cycle(dir) abort
-  let l:s = skyrg#panel#state()
+  let l:fm = skyrg#panel#state().form
   let l:c = skyrg#panel#const()
   let l:n = skyrg#panel#preset#names()
   if empty(l:n) | return | endif
-  let l:idx = index(l:n, l:s.fields[l:c.PRESET].value)
+  let l:idx = index(l:n, l:fm.fields[l:c.PRESET].value)
   let l:idx = l:idx < 0 ? 0 : (l:idx + a:dir + len(l:n)) % len(l:n)
   let l:name = l:n[l:idx]
-  let l:s.fields[l:c.PRESET].value = l:name
-  let l:s.fields[l:c.PRESET].pos = len(l:name)
+  let l:fm.fields[l:c.PRESET].value = l:name
+  let l:fm.fields[l:c.PRESET].pos = len(l:name)
   call skyrg#panel#preset#apply(l:name)
 endfunction
 
 function! skyrg#panel#preset#apply(name) abort
-  let l:s = skyrg#panel#state()
+  let l:fm = skyrg#panel#state().form
   let l:c = skyrg#panel#const()
   if !exists('g:skyrg_presets') || !has_key(g:skyrg_presets, a:name) | return | endif
   let l:p = g:skyrg_presets[a:name]
-  if empty(l:s.fields[l:c.TYPES].value) && has_key(l:p, 'desired_types')
+  if empty(l:fm.fields[l:c.TYPES].value) && has_key(l:p, 'desired_types')
     let l:v = join(l:p.desired_types, ',')
-    let l:s.fields[l:c.TYPES].value = l:v | let l:s.fields[l:c.TYPES].pos = len(l:v)
+    let l:fm.fields[l:c.TYPES].value = l:v | let l:fm.fields[l:c.TYPES].pos = len(l:v)
   endif
-  if empty(l:s.fields[l:c.DIRS].value) && has_key(l:p, 'desired_dirs')
+  if empty(l:fm.fields[l:c.DIRS].value) && has_key(l:p, 'desired_dirs')
     let l:v = join(l:p.desired_dirs, ',')
-    let l:s.fields[l:c.DIRS].value = l:v | let l:s.fields[l:c.DIRS].pos = len(l:v)
+    let l:fm.fields[l:c.DIRS].value = l:v | let l:fm.fields[l:c.DIRS].pos = len(l:v)
   endif
 endfunction

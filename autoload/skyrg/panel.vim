@@ -1,8 +1,37 @@
 " autoload/skyrg/panel.vim — Multi-pane search UI (entry point + shared state)
 "
+" Architecture:
+"   panel.vim owns the shared state dict (s:state) and popup lifecycle.
+"   Submodules access state via skyrg#panel#state() and constants via
+"   skyrg#panel#const().  Each submodule owns a namespaced sub-dict:
+"
+"     s:state.popups   — popup window IDs (form_id, results_id, etc.)
+"     s:state.tree     — tree panel state (idx, nodes, expanded, filter, etc.)
+"     s:state.results  — search results (matches, result_idx, res_scroll)
+"     s:state.form     — form state (field index, fields array)
+"     s:state.search   — rg job state (search_gen, pending, job, timer)
+"
+"   This namespacing prevents key collisions and makes ownership explicit.
+"
+" Design patterns:
+"   1. Prep/Render separation: panels split data preparation (file I/O,
+"      filtering, syntax analysis) from rendering (building popup lines).
+"      Swap the prep step to add features without touching rendering.
+"   2. Line builders: util#line() and util#hl_line() standardize popup
+"      line dict construction across all panels.
+"   3. State accessors: submodules never access s:state directly; they
+"      call skyrg#panel#state() to get a reference. This makes
+"      dependencies explicit and keeps the door open for validation.
+"
 " Submodules under panel/:
-"   tree.vim, form.vim, results.vim, preview.vim,
-"   search.vim, preset.vim, complete.vim, util.vim
+"   tree.vim      — directory tree (owns state.tree)
+"   form.vim      — form rendering + keys (owns state.form)
+"   results.vim   — results list (owns state.results)
+"   preview.vim   — file preview with syntax highlighting
+"   search.vim    — async rg job (owns state.search)
+"   preset.vim    — preset management
+"   complete.vim  — dir/type tab-completion
+"   util.vim      — shared line builders + helpers
 
 "==============================================================================
 " Constants (shared via skyrg#panel#const())
@@ -53,24 +82,29 @@ function! skyrg#panel#open() abort
   endif
   let l:c = s:const
   let s:state = {
-    \ 'mode': l:c.MODE_SEARCH,
-    \ 'pane': l:c.PANE_FORM, 'field': l:c.QUERY, 'closing': 0, 'search_gen': 0,
-    \ 'fields': [
-    \   {'label': 'Query',  'value': '', 'pos': 0},
-    \   {'label': 'Dirs',   'value': '', 'pos': 0},
-    \   {'label': 'Types',  'value': '', 'pos': 0},
-    \   {'label': 'Preset', 'value': '', 'pos': 0},
-    \   {'label': '.gitignore', 'value': 'on', 'pos': 0},
-    \ ],
-    \ 'matches': [], 'result_idx': 0, 'res_scroll': 0,
-    \ 'form_id': 0, 'results_id': 0, 'preview_id': 0, 'tree_id': 0,
-    \ 'tree_open': 0, 'tree_idx': 0, 'tree_nodes': [], 'tree_expanded': {},
-    \ 'tree_filter': '', 'tree_tab_mode': 0, 'tree_tab_base': '', 'tree_no_matches': 0,
+    \ 'mode': l:c.MODE_SEARCH, 'pane': l:c.PANE_FORM, 'closing': 0,
+    \ 'popups': {'form': 0, 'results': 0, 'preview': 0, 'tree': 0},
+    \ 'form': {
+    \   'field': l:c.QUERY,
+    \   'fields': [
+    \     {'label': 'Query',  'value': '', 'pos': 0},
+    \     {'label': 'Dirs',   'value': '', 'pos': 0},
+    \     {'label': 'Types',  'value': '', 'pos': 0},
+    \     {'label': 'Preset', 'value': '', 'pos': 0},
+    \     {'label': '.gitignore', 'value': 'on', 'pos': 0},
+    \   ],
+    \ },
+    \ 'results': {'matches': [], 'idx': 0, 'scroll': 0},
+    \ 'search': {'gen': 0},
+    \ 'tree': {
+    \   'open': 0, 'idx': 0, 'nodes': [], 'expanded': {},
+    \   'filter': '', 'tab_mode': 0, 'tab_base': '', 'no_matches': 0,
+    \ },
     \ }
   call s:init_prop_types()
   let l:L = s:layout()
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
-  let s:state.form_id = popup_create(skyrg#panel#form#render(), {
+  let s:state.popups.form = popup_create(skyrg#panel#form#render(), {
     \ 'title': ' SkyRG ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1],
     \ 'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw,
@@ -78,20 +112,20 @@ function! skyrg#panel#open() abort
     \ 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
     \ 'callback': function('s:on_close'),
     \ })
-  let s:state.results_id = popup_create([{'text': '  No results'}], {
+  let s:state.popups.results = popup_create([{'text': '  No results'}], {
     \ 'title': ' Results ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'wrap': 0,
     \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
     \ 'minheight': l:L.rh, 'maxheight': l:L.rh, 'zindex': 100,
     \ })
-  let s:state.preview_id = popup_create([{'text': ''}], {
+  let s:state.popups.preview = popup_create([{'text': ''}], {
     \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
     \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
     \ })
-  let s:state.tree_id = popup_create([{'text': '  (Ctrl+Left to open)'}], {
+  let s:state.popups.tree = popup_create([{'text': '  (Ctrl+Left to open)'}], {
     \ 'title': ' Tree ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.tr, 'col': l:L.tc, 'minwidth': l:L.tw, 'maxwidth': l:L.tw,
@@ -111,15 +145,16 @@ function! skyrg#panel#browse(matches, title) abort
   let l:c = s:const
   let s:state = {
     \ 'mode': l:c.MODE_BROWSE,
-    \ 'pane': l:c.PANE_RESULTS, 'field': 0, 'closing': 0, 'search_gen': 0,
-    \ 'fields': [],
-    \ 'matches': a:matches, 'result_idx': 0, 'res_scroll': 0,
-    \ 'form_id': 0, 'results_id': 0, 'preview_id': 0,
+    \ 'pane': l:c.PANE_RESULTS, 'closing': 0,
+    \ 'popups': {'form': 0, 'results': 0, 'preview': 0},
+    \ 'form': {'field': 0, 'fields': []},
+    \ 'results': {'matches': a:matches, 'idx': 0, 'scroll': 0},
+    \ 'search': {'gen': 0},
     \ }
   call s:init_prop_types()
   let l:L = s:layout()
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
-  let s:state.results_id = popup_create([{'text': '  Loading...'}], {
+  let s:state.popups.results = popup_create([{'text': '  Loading...'}], {
     \ 'title': ' '.a:title.' ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'wrap': 0,
@@ -128,7 +163,7 @@ function! skyrg#panel#browse(matches, title) abort
     \ 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
     \ 'callback': function('s:on_close'),
     \ })
-  let s:state.preview_id = popup_create([{'text': ''}], {
+  let s:state.popups.preview = popup_create([{'text': ''}], {
     \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
@@ -172,7 +207,7 @@ function! s:layout() abort
       \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5}
   endif
   let l:fh = 7 | let l:tw = 30
-  let l:tree_vis = get(s:state, 'tree_open', 0)
+  let l:tree_vis = get(s:state.tree, 'open', 0)
   let l:toff = l:tree_vis ? l:tw + 2 : 0
   let l:fw2 = max([l:fw - l:toff, 40])
   let l:bh = max([l:H - l:fh - 6, 6])
@@ -211,9 +246,11 @@ endfunction
 function! s:close() abort
   if s:state.closing | return | endif
   let s:state.closing = 1
-  if has_key(s:state, 'job') && job_status(s:state.job) ==# 'run' | call job_stop(s:state.job) | endif
-  if has_key(s:state, 'timer') | call timer_stop(s:state.timer) | endif
-  for l:id in [s:state.form_id, s:state.results_id, s:state.preview_id, get(s:state, 'tree_id', 0)]
+  if has_key(s:state.search, 'job') && job_status(s:state.search.job) ==# 'run'
+    call job_stop(s:state.search.job)
+  endif
+  if has_key(s:state.search, 'timer') | call timer_stop(s:state.search.timer) | endif
+  for l:id in [s:state.popups.form, s:state.popups.results, s:state.popups.preview, get(s:state.popups, 'tree', 0)]
     silent! call popup_close(l:id)
   endfor
   for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
@@ -236,25 +273,25 @@ endfunction
 function! s:set_pane(p) abort
   let l:c = s:const
   let s:state.pane = a:p
-  if s:state.form_id
-    call popup_setoptions(s:state.form_id, {'borderhighlight': [a:p == l:c.PANE_FORM ? 'Title' : 'Comment']})
+  if s:state.popups.form
+    call popup_setoptions(s:state.popups.form, {'borderhighlight': [a:p == l:c.PANE_FORM ? 'Title' : 'Comment']})
   endif
-  call popup_setoptions(s:state.results_id, {'borderhighlight': [a:p == l:c.PANE_RESULTS ? 'Title' : 'Comment']})
-  if get(s:state, 'tree_id', 0)
-    call popup_setoptions(s:state.tree_id, {'borderhighlight': [a:p == l:c.PANE_TREE ? 'Title' : 'Comment']})
+  call popup_setoptions(s:state.popups.results, {'borderhighlight': [a:p == l:c.PANE_RESULTS ? 'Title' : 'Comment']})
+  if get(s:state.popups, 'tree', 0)
+    call popup_setoptions(s:state.popups.tree, {'borderhighlight': [a:p == l:c.PANE_TREE ? 'Title' : 'Comment']})
   endif
-  if s:state.form_id | call skyrg#panel#form#redraw() | endif
+  if s:state.popups.form | call skyrg#panel#form#redraw() | endif
 endfunction
 
 function! s:reposition_popups() abort
   let l:L = s:layout()
-  if s:state.form_id
-    call popup_move(s:state.form_id, {'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw})
+  if s:state.popups.form
+    call popup_move(s:state.popups.form, {'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw})
   endif
-  call popup_move(s:state.results_id, {'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw})
-  call popup_move(s:state.preview_id, {'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw})
-  if get(s:state, 'tree_id', 0)
-    call popup_move(s:state.tree_id, {'line': l:L.tr, 'col': l:L.tc,
+  call popup_move(s:state.popups.results, {'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw})
+  call popup_move(s:state.popups.preview, {'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw})
+  if get(s:state.popups, 'tree', 0)
+    call popup_move(s:state.popups.tree, {'line': l:L.tr, 'col': l:L.tc,
       \ 'minwidth': l:L.tw, 'maxwidth': l:L.tw, 'minheight': l:L.th, 'maxheight': l:L.th})
   endif
 endfunction
@@ -269,11 +306,11 @@ function! s:on_key(winid, key) abort
   endif
   " Ctrl+Left/Right: tree toggle / pane switching
   if a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>"
-    if a:key ==# "\<C-Left>" && !s:state.tree_open
+    if a:key ==# "\<C-Left>" && !s:state.tree.open
       call skyrg#panel#tree#toggle(1)
-    elseif a:key ==# "\<C-Left>" && s:state.tree_open && s:state.pane != l:c.PANE_TREE
+    elseif a:key ==# "\<C-Left>" && s:state.tree.open && s:state.pane != l:c.PANE_TREE
       call s:set_pane(l:c.PANE_TREE)
-    elseif a:key ==# "\<C-Right>" && s:state.tree_open && s:state.pane == l:c.PANE_TREE
+    elseif a:key ==# "\<C-Right>" && s:state.tree.open && s:state.pane == l:c.PANE_TREE
       call skyrg#panel#tree#toggle(0)
     elseif a:key ==# "\<C-Right>" && s:state.pane != l:c.PANE_FORM
       call s:set_pane(l:c.PANE_FORM)
@@ -306,10 +343,10 @@ function! s:on_key(winid, key) abort
   endif
   " Tab/S-Tab: completion or preset cycling
   if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
-    if s:state.field == l:c.DIRS || s:state.field == l:c.TYPES
+    if s:state.form.field == l:c.DIRS || s:state.form.field == l:c.TYPES
       call skyrg#panel#complete#field(a:key ==# "\<S-Tab>" ? -1 : 1)
       call skyrg#panel#form#redraw()
-    elseif s:state.field == l:c.QUERY
+    elseif s:state.form.field == l:c.QUERY
       call skyrg#panel#preset#cycle(a:key ==# "\<Tab>" ? 1 : -1)
       call skyrg#panel#form#redraw()
       call skyrg#panel#search#schedule()
@@ -318,7 +355,7 @@ function! s:on_key(winid, key) abort
   endif
   " Ctrl+Shift+Left/Right: jump letter in completion
   if (a:key ==# "\<C-S-Left>" || a:key ==# "\<C-S-Right>") && s:state.pane == l:c.PANE_FORM
-    if s:state.field == l:c.DIRS || s:state.field == l:c.TYPES
+    if s:state.form.field == l:c.DIRS || s:state.form.field == l:c.TYPES
       call skyrg#panel#complete#jump_letter(a:key ==# "\<C-S-Left>" ? -1 : 1)
       call skyrg#panel#form#redraw()
     endif

@@ -1,4 +1,9 @@
 " autoload/skyrg/panel/preview.vim — File preview with syntax highlighting
+"
+" Follows prep/render separation:
+"   s:prepare()  — reads file lines + extracts syntax spans for the range
+"   s:render()   — builds popup line dicts with syntax + match highlight
+"   update()     — orchestrates prepare → render → popup_settext
 
 let s:PREVIEW_CTX = 10
 
@@ -11,53 +16,21 @@ let s:syn_file = ''
 "==============================================================================
 function! skyrg#panel#preview#update() abort
   let l:s = skyrg#panel#state()
-  if empty(l:s.matches)
-    call popup_settext(l:s.preview_id, [{'text': ''}])
-    call popup_setoptions(l:s.preview_id, {'title': ' Preview '})
+  let l:r = l:s.results
+  if empty(l:r.matches)
+    call popup_settext(l:s.popups.preview, [skyrg#panel#util#line('')])
+    call popup_setoptions(l:s.popups.preview, {'title': ' Preview '})
     return
   endif
-  let l:m = l:s.matches[l:s.result_idx]
-  call popup_setoptions(l:s.preview_id, {'title': ' '.skyrg#panel#util#short(l:m.file).' '})
+  let l:m = l:r.matches[l:r.idx]
+  call popup_setoptions(l:s.popups.preview, {'title': ' '.skyrg#panel#util#short(l:m.file).' '})
   if !filereadable(l:m.file)
-    call popup_settext(l:s.preview_id, [{'text': '  (not readable)'}])
+    call popup_settext(l:s.popups.preview, [skyrg#panel#util#line('  (not readable)')])
     return
   endif
-  let l:all = readfile(l:m.file)
-  let l:s_line = max([0, l:m.line - s:PREVIEW_CTX - 1])
-  let l:e_line = min([len(l:all)-1, l:m.line + s:PREVIEW_CTX - 1])
-
-  " Get syntax spans from a hidden buffer
-  let l:syn_spans = s:get_syntax_spans(l:m.file, l:s_line + 1, l:e_line + 1)
-
-  let l:lines = []
-  for l:i in range(l:s_line, l:e_line)
-    let l:ln = l:i + 1
-    let l:prefix = printf('%s%4d  ', l:ln == l:m.line ? '>' : ' ', l:ln)
-    let l:text = l:prefix . l:all[l:i]
-    let l:plen = len(l:prefix)
-
-    " Collect props: syntax spans first, match highlight on top
-    let l:props = []
-    let l:span_idx = l:i - l:s_line
-    if l:span_idx < len(l:syn_spans)
-      for l:sp in l:syn_spans[l:span_idx]
-        call add(l:props, {
-          \ 'col': l:sp.col + l:plen,
-          \ 'length': l:sp.length,
-          \ 'type': l:sp.type})
-      endfor
-    endif
-    if l:ln == l:m.line
-      call add(l:props, {'col': 1, 'length': len(l:text), 'type': 'skyrg_match'})
-    endif
-
-    if empty(l:props)
-      call add(l:lines, {'text': l:text})
-    else
-      call add(l:lines, {'text': l:text, 'props': l:props})
-    endif
-  endfor
-  call popup_settext(l:s.preview_id, l:lines)
+  let l:data = s:prepare(l:m.file, l:m.line)
+  let l:lines = s:render(l:data, l:m.line)
+  call popup_settext(l:s.popups.preview, l:lines)
 endfunction
 
 function! skyrg#panel#preview#cleanup() abort
@@ -66,6 +39,49 @@ function! skyrg#panel#preview#cleanup() abort
   endif
   let s:syn_winid = 0
   let s:syn_file = ''
+endfunction
+
+"==============================================================================
+" Prep / Render (private)
+"==============================================================================
+
+" Read file lines and syntax spans for the preview range.
+" Returns: {'file_lines': [...], 'syn_spans': [...], 'start': int, 'end': int}
+function! s:prepare(file, match_line) abort
+  let l:all = readfile(a:file)
+  let l:s_line = max([0, a:match_line - s:PREVIEW_CTX - 1])
+  let l:e_line = min([len(l:all)-1, a:match_line + s:PREVIEW_CTX - 1])
+  let l:syn_spans = s:get_syntax_spans(a:file, l:s_line + 1, l:e_line + 1)
+  return {'file_lines': l:all, 'syn_spans': l:syn_spans,
+    \ 'start': l:s_line, 'end': l:e_line}
+endfunction
+
+" Build popup line dicts with syntax props + match highlight.
+function! s:render(data, match_line) abort
+  let l:lines = []
+  for l:i in range(a:data.start, a:data.end)
+    let l:ln = l:i + 1
+    let l:prefix = printf('%s%4d  ', l:ln == a:match_line ? '>' : ' ', l:ln)
+    let l:text = l:prefix . a:data.file_lines[l:i]
+    let l:plen = len(l:prefix)
+
+    let l:props = []
+    let l:span_idx = l:i - a:data.start
+    if l:span_idx < len(a:data.syn_spans)
+      for l:sp in a:data.syn_spans[l:span_idx]
+        call add(l:props, {
+          \ 'col': l:sp.col + l:plen,
+          \ 'length': l:sp.length,
+          \ 'type': l:sp.type})
+      endfor
+    endif
+    if l:ln == a:match_line
+      call add(l:props, {'col': 1, 'length': len(l:text), 'type': 'skyrg_match'})
+    endif
+
+    call add(l:lines, skyrg#panel#util#line(l:text, l:props))
+  endfor
+  return l:lines
 endfunction
 
 "==============================================================================
