@@ -86,31 +86,28 @@ function! skyrg#panel#form#render() abort
     if l:i == l:c.GITIGN
       let l:chk = l:f.value ==# 'on' ? 'x' : ' '
       let l:text = printf(' %s [%s] %s', l:act ? '>' : ' ', l:chk, l:f.label)
+      let l:props = [{'col': 1, 'length': len(l:text), 'type': 'skyrg_dim'}]
       if l:act
-        call add(l:lines, {'text': l:text, 'props': [
-          \ {'col': 4, 'length': 3, 'type': 'skyrg_cursor'}]})
-      else
-        call add(l:lines, {'text': l:text})
+        call add(l:props, {'col': 4, 'length': 3, 'type': 'skyrg_cursor'})
       endif
+      call add(l:lines, {'text': l:text, 'props': l:props})
     elseif l:i == l:c.PRESET
       let l:val = empty(l:f.value) ? '(None)' : l:f.value
       let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
       let l:text = l:pfx . '◀ ' . l:val . ' ▶'
+      let l:props = [{'col': 1, 'length': len(l:pfx), 'type': 'skyrg_dim'}]
       if l:act
-        call add(l:lines, {'text': l:text, 'props': [
-          \ {'col': len(l:pfx)+1, 'length': len(l:text)-len(l:pfx), 'type': 'skyrg_cursor'}]})
-      else
-        call add(l:lines, {'text': l:text})
+        call add(l:props, {'col': len(l:pfx)+1, 'length': len(l:text)-len(l:pfx), 'type': 'skyrg_cursor'})
       endif
+      call add(l:lines, {'text': l:text, 'props': l:props})
     else
       let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
       let l:text = l:pfx . l:f.value . (l:act ? ' ' : '')
+      let l:props = [{'col': 1, 'length': len(l:pfx), 'type': 'skyrg_dim'}]
       if l:act
-        call add(l:lines, {'text': l:text, 'props': [
-          \ {'col': len(l:pfx)+l:f.pos+1, 'length': 1, 'type': 'skyrg_cursor'}]})
-      else
-        call add(l:lines, {'text': l:text})
+        call add(l:props, {'col': len(l:pfx)+l:f.pos+1, 'length': 1, 'type': 'skyrg_cursor'})
       endif
+      call add(l:lines, {'text': l:text, 'props': l:props})
     endif
   endfor
   call add(l:lines, s:hint())
@@ -133,24 +130,24 @@ function! s:hint() abort
   if l:lab ==# 'Preset'
     let l:n = skyrg#panel#preset#names()
     let l:t = empty(l:n) ? '  No presets' : '  Left/Right: cycle  Backspace: reset'
-    return {'text': l:t}
+    return skyrg#panel#util#hl_line(l:t, 'skyrg_dim')
   elseif l:lab ==# 'Types'
     let l:cands = get(l:s, 'type_candidates', [])
     if !empty(l:cands)
       return skyrg#panel#form#hint_with_hl(l:cands, 20)
     endif
-    return {'text': '  e.g. py,cpp,java  (Tab to complete, comma-separated)'}
+    return skyrg#panel#util#hl_line('  e.g. py,cpp,java  (Tab to complete, comma-separated)', 'skyrg_dim')
   elseif l:lab ==# 'Dirs'
     let l:cands = get(l:s, 'dir_candidates', [])
     if !empty(l:cands)
       return skyrg#panel#form#hint_with_hl(map(copy(l:cands), 'fnamemodify(v:val, ":t")'), 10)
     endif
-    return {'text': '  e.g. src/,lib/  (Tab to complete, comma-separated)'}
+    return skyrg#panel#util#hl_line('  e.g. src/,lib/  (Tab to complete, comma-separated)', 'skyrg_dim')
   endif
   if l:lab ==# '.gitignore'
-    return {'text': '  Space: toggle  (rg respects .gitignore by default)'}
+    return skyrg#panel#util#hl_line('  Space: toggle  (rg respects .gitignore by default)', 'skyrg_dim')
   endif
-  return {'text': '  C-Up/C-Down: fields  Up/Down: matches  Tab: presets  Enter: open'}
+  return skyrg#panel#util#hl_line('  C-Up/C-Down: fields  Up/Down: matches  Tab: presets  Enter: open', 'skyrg_dim')
 endfunction
 
 function! skyrg#panel#form#hint_with_hl(cands, max_show) abort
@@ -184,5 +181,6 @@ function! skyrg#panel#form#hint_with_hl(cands, max_show) abort
   if l:end < l:n - 1
     let l:text .= '...'
   endif
-  return empty(l:props) ? {'text': l:text} : {'text': l:text, 'props': l:props}
+  call insert(l:props, {'col': 1, 'length': len(l:text), 'type': 'skyrg_dim'})
+  return {'text': l:text, 'props': l:props}
 endfunction

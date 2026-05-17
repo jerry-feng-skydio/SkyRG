@@ -14,7 +14,7 @@ function! skyrg#panel#results#redraw() abort
   if empty(l:r.matches)
     let l:msg = !empty(get(l:s.search, 'rg_error', ''))
       \ ? '  Error: '.l:s.search.rg_error : '  No results'
-    call popup_settext(l:s.popups.results, [skyrg#panel#util#line(l:msg)])
+    call popup_settext(l:s.popups.results, [skyrg#panel#util#hl_line(l:msg, 'skyrg_dim')])
     call popup_setoptions(l:s.popups.results, {'title': ' Results '})
     return
   endif
@@ -62,16 +62,21 @@ function! s:prepare(r) abort
 endfunction
 
 " Build popup line dicts from the visible slice.
+" File path + line number are dimmed; match text is Normal (white).
 function! s:render(data, sel_idx) abort
   let l:r = skyrg#panel#state().results
   let l:lines = []
   for l:i in range(a:data.first, a:data.last)
     let l:m = l:r.matches[l:i]
     let l:mk = l:i == a:sel_idx ? '> ' : '  '
-    let l:text = printf('%s%s:%d: %s', l:mk, skyrg#panel#util#short(l:m.file), l:m.line, l:m.text)
-    call add(l:lines, l:i == a:sel_idx
-      \ ? skyrg#panel#util#hl_line(l:text, 'skyrg_sel')
-      \ : skyrg#panel#util#line(l:text))
+    let l:path_part = printf('%s%s:%d: ', l:mk, skyrg#panel#util#short(l:m.file), l:m.line)
+    let l:text = l:path_part . l:m.text
+    if l:i == a:sel_idx
+      call add(l:lines, skyrg#panel#util#hl_line(l:text, 'skyrg_sel'))
+    else
+      call add(l:lines, {'text': l:text, 'props': [
+        \ {'col': 1, 'length': len(l:path_part), 'type': 'skyrg_dim'}]})
+    endif
   endfor
   return l:lines
 endfunction

@@ -223,14 +223,17 @@ function! s:render_searchbar(lines, L) abort
   let l:t = skyrg#panel#state().tree
   let l:filt = l:t.filter
   if l:t.tab_mode
-    call add(a:lines, skyrg#panel#util#line(' >' . l:filt))
+    let l:bar = ' >' . l:filt
+    call add(a:lines, {'text': l:bar, 'props': [
+      \ {'col': 1, 'length': 2, 'type': 'skyrg_dim'}]})
   else
     let l:bar = ' >' . l:filt
     let l:cpos = len(l:bar) + 1
     call add(a:lines, {'text': l:bar . ' ', 'props': [
+      \ {'col': 1, 'length': 2, 'type': 'skyrg_dim'},
       \ {'col': l:cpos, 'length': 1, 'type': 'skyrg_cursor'}]})
   endif
-  call add(a:lines, skyrg#panel#util#line(repeat('─', a:L.tw - 2)))
+  call add(a:lines, skyrg#panel#util#hl_line(repeat('─', a:L.tw - 2), 'skyrg_dim'))
 endfunction
 
 function! skyrg#panel#tree#redraw() abort
@@ -241,12 +244,12 @@ function! skyrg#panel#tree#redraw() abort
   let l:vis = l:L.th - 4
   let l:lines = []
   call s:render_searchbar(l:lines, l:L)
-  call add(l:lines, skyrg#panel#util#line(' ' . getcwd()))
+  call add(l:lines, skyrg#panel#util#hl_line(' ' . getcwd(), 'skyrg_dim'))
   if l:t.no_matches || empty(l:t.nodes)
     for l:i in range(len(l:t.nodes))
       call s:add_line(l:lines, l:i)
     endfor
-    call add(l:lines, skyrg#panel#util#line('     (no matches)'))
+    call add(l:lines, skyrg#panel#util#hl_line('     (no matches)', 'skyrg_dim'))
     call popup_settext(l:s.popups.tree, l:lines)
     let l:pi = s:deepest_parent()
     if l:pi >= 0

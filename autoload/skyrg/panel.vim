@@ -106,6 +106,7 @@ function! skyrg#panel#open() abort
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
   let s:state.popups.form = popup_create(skyrg#panel#form#render(), {
     \ 'title': ' SkyRG ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1],
     \ 'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw,
     \ 'minheight': l:L.fh, 'maxheight': l:L.fh,
@@ -114,6 +115,7 @@ function! skyrg#panel#open() abort
     \ })
   let s:state.popups.results = popup_create([{'text': '  No results'}], {
     \ 'title': ' Results ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'wrap': 0,
     \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
@@ -121,12 +123,14 @@ function! skyrg#panel#open() abort
     \ })
   let s:state.popups.preview = popup_create([{'text': ''}], {
     \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
     \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
     \ })
   let s:state.popups.tree = popup_create([{'text': '  (Ctrl+Left to open)'}], {
     \ 'title': ' Tree ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.tr, 'col': l:L.tc, 'minwidth': l:L.tw, 'maxwidth': l:L.tw,
     \ 'minheight': l:L.th, 'maxheight': l:L.th, 'zindex': 100,
@@ -156,6 +160,7 @@ function! skyrg#panel#browse(matches, title) abort
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
   let s:state.popups.results = popup_create([{'text': '  Loading...'}], {
     \ 'title': ' '.a:title.' ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'wrap': 0,
     \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
@@ -165,6 +170,7 @@ function! skyrg#panel#browse(matches, title) abort
     \ })
   let s:state.popups.preview = popup_create([{'text': ''}], {
     \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
+    \ 'highlight': 'Normal',
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
     \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
@@ -228,7 +234,7 @@ let s:syn_groups = ['Comment', 'Constant', 'String', 'Identifier',
   \ 'Error', 'Todo', 'Number', 'Boolean', 'Keyword', 'Operator']
 
 function! s:init_prop_types() abort
-  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
+  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match', 'skyrg_dim']
     silent! call prop_type_delete(l:n)
   endfor
   for l:g in s:syn_groups
@@ -238,6 +244,7 @@ function! s:init_prop_types() abort
   call prop_type_add('skyrg_cursor', {'highlight': l:hl})
   call prop_type_add('skyrg_sel',    {'highlight': 'SkyRGSel'})
   call prop_type_add('skyrg_match',  {'highlight': 'Search'})
+  call prop_type_add('skyrg_dim',    {'highlight': 'Comment'})
   for l:g in s:syn_groups
     call prop_type_add('skyrg_syn_' . l:g, {'highlight': l:g})
   endfor
@@ -253,7 +260,7 @@ function! s:close() abort
   for l:id in [s:state.popups.form, s:state.popups.results, s:state.popups.preview, get(s:state.popups, 'tree', 0)]
     silent! call popup_close(l:id)
   endfor
-  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
+  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match', 'skyrg_dim']
     silent! call prop_type_delete(l:n)
   endfor
   for l:g in s:syn_groups

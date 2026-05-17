@@ -25,7 +25,7 @@ function! skyrg#panel#preview#update() abort
   let l:m = l:r.matches[l:r.idx]
   call popup_setoptions(l:s.popups.preview, {'title': ' '.skyrg#panel#util#short(l:m.file).' '})
   if !filereadable(l:m.file)
-    call popup_settext(l:s.popups.preview, [skyrg#panel#util#line('  (not readable)')])
+    call popup_settext(l:s.popups.preview, [skyrg#panel#util#hl_line('  (not readable)', 'skyrg_dim')])
     return
   endif
   let l:data = s:prepare(l:m.file, l:m.line)
@@ -65,7 +65,8 @@ function! s:render(data, match_line) abort
     let l:text = l:prefix . a:data.file_lines[l:i]
     let l:plen = len(l:prefix)
 
-    let l:props = []
+    " Dim line number prefix
+    let l:props = [{'col': 1, 'length': l:plen, 'type': 'skyrg_dim'}]
     let l:span_idx = l:i - a:data.start
     if l:span_idx < len(a:data.syn_spans)
       for l:sp in a:data.syn_spans[l:span_idx]
