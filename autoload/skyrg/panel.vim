@@ -188,14 +188,24 @@ endfunction
 "==============================================================================
 " Close / prop types
 "==============================================================================
+let s:syn_groups = ['Comment', 'Constant', 'String', 'Identifier',
+  \ 'Function', 'Statement', 'PreProc', 'Type', 'Special', 'Underlined',
+  \ 'Error', 'Todo', 'Number', 'Boolean', 'Keyword', 'Operator']
+
 function! s:init_prop_types() abort
   for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
     silent! call prop_type_delete(l:n)
+  endfor
+  for l:g in s:syn_groups
+    silent! call prop_type_delete('skyrg_syn_' . l:g)
   endfor
   let l:hl = hlexists('TermCursor') ? 'TermCursor' : 'Visual'
   call prop_type_add('skyrg_cursor', {'highlight': l:hl})
   call prop_type_add('skyrg_sel',    {'highlight': 'SkyRGSel'})
   call prop_type_add('skyrg_match',  {'highlight': 'Search'})
+  for l:g in s:syn_groups
+    call prop_type_add('skyrg_syn_' . l:g, {'highlight': l:g})
+  endfor
 endfunction
 
 function! s:close() abort
@@ -209,6 +219,11 @@ function! s:close() abort
   for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
     silent! call prop_type_delete(l:n)
   endfor
+  for l:g in s:syn_groups
+    silent! call prop_type_delete('skyrg_syn_' . l:g)
+  endfor
+  " Clean up syntax preview hidden window
+  call skyrg#panel#preview#cleanup()
 endfunction
 
 function! s:on_close(id, result) abort
