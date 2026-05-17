@@ -5,11 +5,11 @@
 "   Submodules access state via skyrg#panel#state() and constants via
 "   skyrg#panel#const().  Each submodule owns a namespaced sub-dict:
 "
-"     s:state.popups   — popup window IDs (form_id, results_id, etc.)
+"     s:state.popups   — popup window IDs (form, results, preview, tree)
 "     s:state.tree     — tree panel state (idx, nodes, expanded, filter, etc.)
-"     s:state.results  — search results (matches, result_idx, res_scroll)
+"     s:state.results  — search results (matches, idx, scroll)
 "     s:state.form     — form state (field index, fields array)
-"     s:state.search   — rg job state (search_gen, pending, job, timer)
+"     s:state.search   — rg job state (gen, pending, job, timer)
 "
 "   This namespacing prevents key collisions and makes ownership explicit.
 "
@@ -20,10 +20,22 @@
 "   2. Line builders: util#line() and util#hl_line() standardize popup
 "      line dict construction across all panels.
 "   3. State accessors: submodules never access s:state directly; they
-"      call skyrg#panel#state() to get a reference. This makes
-"      dependencies explicit and keeps the door open for validation.
+"      call skyrg#panel#state() to get a reference.  In debug mode
+"      (g:skyrg_debug), the accessor validates against s:schema.
+"   4. Style registry: style.vim is the single source of truth for all
+"      highlight groups and text property types.
+"   5. Popup factory: popup.vim provides create/move with shared defaults
+"      (Normal highlight, rounded borders, padding).
+"   6. Event bus: events.vim decouples cross-panel updates.  Emitters
+"      don't know who listens; listeners register in s:register_events().
+"   7. Layout geometry: s:layout() returns a flat dict plus a .geo
+"      sub-dict with per-popup {line, col, width, height} for clean
+"      popup factory calls.
 "
 " Submodules under panel/:
+"   style.vim     — highlight groups + prop type registry
+"   popup.vim     — popup factory (create/move with defaults)
+"   events.vim    — event bus (on/emit/reset)
 "   tree.vim      — directory tree (owns state.tree)
 "   form.vim      — form rendering + keys (owns state.form)
 "   results.vim   — results list (owns state.results)
@@ -43,12 +55,11 @@ let s:const = {
   \ 'MODE_SEARCH': 'search', 'MODE_BROWSE': 'browse',
   \ }
 
-highlight SkyRGSel cterm=bold ctermfg=Yellow ctermbg=DarkBlue gui=bold guifg=#FFD700 guibg=#1C3A5F
-
 "==============================================================================
 " State accessors (used by all submodules)
 "==============================================================================
 function! skyrg#panel#state() abort
+  if get(g:, 'skyrg_debug', 0) | call s:validate_state() | endif
   return s:state
 endfunction
 
@@ -101,41 +112,19 @@ function! skyrg#panel#open() abort
     \   'filter': '', 'tab_mode': 0, 'tab_base': '', 'no_matches': 0,
     \ },
     \ }
-  call s:init_prop_types()
-  let l:L = s:layout()
-  let l:bch = ['─','│','─','│','╭','╮','╯','╰']
-  let s:state.popups.form = popup_create(skyrg#panel#form#render(), {
-    \ 'title': ' SkyRG ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1],
-    \ 'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw,
-    \ 'minheight': l:L.fh, 'maxheight': l:L.fh,
-    \ 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
-    \ 'callback': function('s:on_close'),
-    \ })
-  let s:state.popups.results = popup_create([{'text': '  No results'}], {
-    \ 'title': ' Results ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
-    \ 'wrap': 0,
-    \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
-    \ 'minheight': l:L.rh, 'maxheight': l:L.rh, 'zindex': 100,
-    \ })
-  let s:state.popups.preview = popup_create([{'text': ''}], {
-    \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
-    \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
-    \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
-    \ })
-  let s:state.popups.tree = popup_create([{'text': '  (Ctrl+Left to open)'}], {
-    \ 'title': ' Tree ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
-    \ 'line': l:L.tr, 'col': l:L.tc, 'minwidth': l:L.tw, 'maxwidth': l:L.tw,
-    \ 'minheight': l:L.th, 'maxheight': l:L.th, 'zindex': 100,
-    \ 'hidden': 1,
-    \ })
+  call skyrg#panel#style#init()
+  call s:register_events()
+  let l:g = s:layout().geo
+  let s:state.popups.form = skyrg#panel#popup#create(skyrg#panel#form#render(),
+    \ extend(copy(l:g.form), {'title': ' SkyRG ', 'borderhighlight': ['Title'],
+    \   'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
+    \   'callback': function('s:on_close')}))
+  let s:state.popups.results = skyrg#panel#popup#create([{'text': '  No results'}],
+    \ extend(copy(l:g.results), {'title': ' Results ', 'wrap': 0}))
+  let s:state.popups.preview = skyrg#panel#popup#create([{'text': ''}],
+    \ extend(copy(l:g.preview), {'title': ' Preview '}))
+  let s:state.popups.tree = skyrg#panel#popup#create([{'text': '  (Ctrl+Left to open)'}],
+    \ extend(copy(l:g.tree), {'title': ' Tree ', 'hidden': 1}))
 endfunction
 
 "==============================================================================
@@ -155,26 +144,15 @@ function! skyrg#panel#browse(matches, title) abort
     \ 'results': {'matches': a:matches, 'idx': 0, 'scroll': 0},
     \ 'search': {'gen': 0},
     \ }
-  call s:init_prop_types()
-  let l:L = s:layout()
-  let l:bch = ['─','│','─','│','╭','╮','╯','╰']
-  let s:state.popups.results = popup_create([{'text': '  Loading...'}], {
-    \ 'title': ' '.a:title.' ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Title'], 'padding': [0,1,0,1], 'scrollbar': 1,
-    \ 'wrap': 0,
-    \ 'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw,
-    \ 'minheight': l:L.rh, 'maxheight': l:L.rh,
-    \ 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
-    \ 'callback': function('s:on_close'),
-    \ })
-  let s:state.popups.preview = popup_create([{'text': ''}], {
-    \ 'title': ' Preview ', 'border': [], 'borderchars': l:bch,
-    \ 'highlight': 'Normal',
-    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
-    \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
-    \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
-    \ })
+  call skyrg#panel#style#init()
+  call s:register_events()
+  let l:g = s:layout().geo
+  let s:state.popups.results = skyrg#panel#popup#create([{'text': '  Loading...'}],
+    \ extend(copy(l:g.results), {'title': ' '.a:title.' ', 'borderhighlight': ['Title'],
+    \   'wrap': 0, 'filter': function('s:on_key'), 'mapping': 0, 'zindex': 200,
+    \   'callback': function('s:on_close')}))
+  let s:state.popups.preview = skyrg#panel#popup#create([{'text': ''}],
+    \ extend(copy(l:g.preview), {'title': ' Preview '}))
   call skyrg#panel#results#redraw()
   call skyrg#panel#preview#update()
 endfunction
@@ -208,48 +186,71 @@ function! s:layout() abort
     let l:bh = max([l:H - 4, 6])
     let l:rw = max([float2nr(l:fw * 0.45), 20])
     let l:pw = max([l:fw - l:rw - 2, 20])
-    return {'fw':l:fw, 'fh':0, 'fr':0, 'fc':0,
+    let l:flat = {'fw':l:fw, 'fh':0, 'fr':0, 'fc':0,
       \ 'rw':l:rw, 'rh':l:bh, 'rr':2, 'rc':3,
-      \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5}
+      \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5,
+      \ 'tw':0, 'th':0, 'tr':0, 'tc':0}
+  else
+    let l:fh = 7 | let l:tw = 30
+    let l:tree_vis = get(s:state.tree, 'open', 0)
+    let l:toff = l:tree_vis ? l:tw + 2 : 0
+    let l:fw2 = max([l:fw - l:toff, 40])
+    let l:bh = max([l:H - l:fh - 6, 6])
+    let l:rw = max([float2nr(l:fw2 * 0.45), 20])
+    let l:pw = max([l:fw2 - l:rw - 2, 20])
+    let l:fc = 3 + l:toff
+    let l:flat = {'fw':l:fw2, 'fh':l:fh, 'fr':2, 'fc':l:fc,
+      \ 'rw':l:rw, 'rh':l:bh, 'rr':l:fh+4, 'rc':l:fc,
+      \ 'pw':l:pw, 'ph':l:bh, 'pr':l:fh+4, 'pc':l:fc+l:rw+2,
+      \ 'tw':l:tw, 'th':l:H-4, 'tr':2, 'tc':3}
   endif
-  let l:fh = 7 | let l:tw = 30
-  let l:tree_vis = get(s:state.tree, 'open', 0)
-  let l:toff = l:tree_vis ? l:tw + 2 : 0
-  let l:fw2 = max([l:fw - l:toff, 40])
-  let l:bh = max([l:H - l:fh - 6, 6])
-  let l:rw = max([float2nr(l:fw2 * 0.45), 20])
-  let l:pw = max([l:fw2 - l:rw - 2, 20])
-  let l:fc = 3 + l:toff
-  return {'fw':l:fw2, 'fh':l:fh, 'fr':2, 'fc':l:fc,
-    \ 'rw':l:rw, 'rh':l:bh, 'rr':l:fh+4, 'rc':l:fc,
-    \ 'pw':l:pw, 'ph':l:bh, 'pr':l:fh+4, 'pc':l:fc+l:rw+2,
-    \ 'tw':l:tw, 'th':l:H-4, 'tr':2, 'tc':3}
+  " Per-popup geometry (used by popup factory for create/move)
+  let l:flat.geo = {
+    \ 'form':    {'line': l:flat.fr, 'col': l:flat.fc, 'width': l:flat.fw, 'height': l:flat.fh},
+    \ 'results': {'line': l:flat.rr, 'col': l:flat.rc, 'width': l:flat.rw, 'height': l:flat.rh},
+    \ 'preview': {'line': l:flat.pr, 'col': l:flat.pc, 'width': l:flat.pw, 'height': l:flat.ph},
+    \ 'tree':    {'line': l:flat.tr, 'col': l:flat.tc, 'width': l:flat.tw, 'height': l:flat.th},
+    \ }
+  return l:flat
 endfunction
 
 "==============================================================================
-" Close / prop types
+" State schema validation (enabled by :let g:skyrg_debug = 1)
 "==============================================================================
-let s:syn_groups = ['Comment', 'Constant', 'String', 'Identifier',
-  \ 'Function', 'Statement', 'PreProc', 'Type', 'Special', 'Underlined',
-  \ 'Error', 'Todo', 'Number', 'Boolean', 'Keyword', 'Operator']
+let s:schema = {
+  \ 'popups': ['form', 'results', 'preview'],
+  \ 'form':    ['field', 'fields'],
+  \ 'results': ['matches', 'idx', 'scroll'],
+  \ 'search':  ['gen'],
+  \ }
 
-function! s:init_prop_types() abort
-  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match', 'skyrg_dim']
-    silent! call prop_type_delete(l:n)
-  endfor
-  for l:g in s:syn_groups
-    silent! call prop_type_delete('skyrg_syn_' . l:g)
-  endfor
-  let l:hl = hlexists('TermCursor') ? 'TermCursor' : 'Visual'
-  call prop_type_add('skyrg_cursor', {'highlight': l:hl})
-  call prop_type_add('skyrg_sel',    {'highlight': 'SkyRGSel'})
-  call prop_type_add('skyrg_match',  {'highlight': 'Search'})
-  call prop_type_add('skyrg_dim',    {'highlight': 'Comment'})
-  for l:g in s:syn_groups
-    call prop_type_add('skyrg_syn_' . l:g, {'highlight': l:g})
+function! s:validate_state() abort
+  if !exists('s:state') | return | endif
+  for [l:ns, l:keys] in items(s:schema)
+    if !has_key(s:state, l:ns)
+      echohl ErrorMsg | echom '[SkyRG] state missing namespace: '.l:ns | echohl None
+      continue
+    endif
+    for l:k in l:keys
+      if !has_key(s:state[l:ns], l:k)
+        echohl ErrorMsg | echom '[SkyRG] state.'.l:ns.' missing key: '.l:k | echohl None
+      endif
+    endfor
   endfor
 endfunction
 
+"==============================================================================
+" Event wiring
+"==============================================================================
+function! s:register_events() abort
+  call skyrg#panel#events#reset()
+  call skyrg#panel#events#on('results_changed', function('skyrg#panel#results#redraw'))
+  call skyrg#panel#events#on('results_changed', function('skyrg#panel#preview#update'))
+endfunction
+
+"==============================================================================
+" Close
+"==============================================================================
 function! s:close() abort
   if s:state.closing | return | endif
   let s:state.closing = 1
@@ -260,13 +261,8 @@ function! s:close() abort
   for l:id in [s:state.popups.form, s:state.popups.results, s:state.popups.preview, get(s:state.popups, 'tree', 0)]
     silent! call popup_close(l:id)
   endfor
-  for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match', 'skyrg_dim']
-    silent! call prop_type_delete(l:n)
-  endfor
-  for l:g in s:syn_groups
-    silent! call prop_type_delete('skyrg_syn_' . l:g)
-  endfor
-  " Clean up syntax preview hidden window
+  call skyrg#panel#events#reset()
+  call skyrg#panel#style#cleanup()
   call skyrg#panel#preview#cleanup()
 endfunction
 
@@ -291,15 +287,14 @@ function! s:set_pane(p) abort
 endfunction
 
 function! s:reposition_popups() abort
-  let l:L = s:layout()
+  let l:g = s:layout().geo
   if s:state.popups.form
-    call popup_move(s:state.popups.form, {'line': l:L.fr, 'col': l:L.fc, 'minwidth': l:L.fw, 'maxwidth': l:L.fw})
+    call skyrg#panel#popup#move(s:state.popups.form, l:g.form)
   endif
-  call popup_move(s:state.popups.results, {'line': l:L.rr, 'col': l:L.rc, 'minwidth': l:L.rw, 'maxwidth': l:L.rw})
-  call popup_move(s:state.popups.preview, {'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw})
+  call skyrg#panel#popup#move(s:state.popups.results, l:g.results)
+  call skyrg#panel#popup#move(s:state.popups.preview, l:g.preview)
   if get(s:state.popups, 'tree', 0)
-    call popup_move(s:state.popups.tree, {'line': l:L.tr, 'col': l:L.tc,
-      \ 'minwidth': l:L.tw, 'maxwidth': l:L.tw, 'minheight': l:L.th, 'maxheight': l:L.th})
+    call skyrg#panel#popup#move(s:state.popups.tree, l:g.tree)
   endif
 endfunction
 

@@ -91,9 +91,7 @@ endfunction
 
 " Map synIDtrans name → prop type name. Returns '' for unmapped groups.
 let s:hl_map = {}
-for s:g in ['Comment', 'Constant', 'String', 'Identifier', 'Function',
-  \ 'Statement', 'PreProc', 'Type', 'Special', 'Underlined',
-  \ 'Error', 'Todo', 'Number', 'Boolean', 'Keyword', 'Operator']
+for s:g in skyrg#panel#style#syn_groups()
   let s:hl_map[s:g] = 'skyrg_syn_' . s:g
 endfor
 

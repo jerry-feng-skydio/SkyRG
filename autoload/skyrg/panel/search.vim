@@ -28,7 +28,7 @@ function! skyrg#panel#search#run() abort
   let l:q = l:f.fields[l:c.QUERY].value
   if empty(l:q)
     let l:s.results.matches = [] | let l:s.results.idx = 0
-    call skyrg#panel#results#redraw() | call skyrg#panel#preview#update()
+    call skyrg#panel#events#emit('results_changed')
     return
   endif
   let l:cmd = ['rg', '--column', '--line-number', '--no-heading',
@@ -100,6 +100,6 @@ function! s:on_done(gen, ch) abort
   if a:gen != l:se.gen | return | endif
   let l:s.results.matches = l:se.pending
   let l:s.results.idx = 0 | let l:s.results.scroll = 0
-  call skyrg#panel#results#redraw() | call skyrg#panel#preview#update()
+  call skyrg#panel#events#emit('results_changed')
   redraw
 endfunction

@@ -236,30 +236,17 @@ function! s:render_searchbar(lines, L) abort
   call add(a:lines, skyrg#panel#util#hl_line(repeat('─', a:L.tw - 2), 'skyrg_dim'))
 endfunction
 
-function! skyrg#panel#tree#redraw() abort
-  let l:s = skyrg#panel#state()
-  let l:t = l:s.tree
-  if !l:s.popups.tree | return | endif
+" Compute which node indices are visible (ancestors + scrolled siblings).
+" Returns {'ancestors': [...], 'sib_first': N, 'sib_last': N, 'empty': 0/1}
+function! s:prepare() abort
+  let l:t = skyrg#panel#state().tree
   let l:L = skyrg#panel#get_layout()
   let l:vis = l:L.th - 4
-  let l:lines = []
-  call s:render_searchbar(l:lines, l:L)
-  call add(l:lines, skyrg#panel#util#hl_line(' ' . getcwd(), 'skyrg_dim'))
   if l:t.no_matches || empty(l:t.nodes)
-    for l:i in range(len(l:t.nodes))
-      call s:add_line(l:lines, l:i)
-    endfor
-    call add(l:lines, skyrg#panel#util#hl_line('     (no matches)', 'skyrg_dim'))
-    call popup_settext(l:s.popups.tree, l:lines)
     let l:pi = s:deepest_parent()
-    if l:pi >= 0
-      let l:t.idx = l:pi
-      let l:rel = fnamemodify(l:t.nodes[l:pi].path, ':.')
-      call popup_setoptions(l:s.popups.tree, {'title': ' '.l:rel.' '})
-    else
-      call popup_setoptions(l:s.popups.tree, {'title': ' Tree '})
-    endif
-    return
+    if l:pi >= 0 | let l:t.idx = l:pi | endif
+    return {'ancestors': [], 'sib_first': 0, 'sib_last': len(l:t.nodes)-1,
+      \ 'empty': 1, 'title': l:pi >= 0 ? fnamemodify(l:t.nodes[l:pi].path, ':.') : ''}
   endif
   let l:sel_depth = l:t.nodes[l:t.idx].depth
   let l:ancestors = []
@@ -273,14 +260,11 @@ function! skyrg#panel#tree#redraw() abort
       if l:d == 0 | break | endif
     endfor
   endif
-  let l:sib_start = -1
-  let l:sib_end = -1
   if empty(l:ancestors)
     let l:sib_start = 0
     let l:sib_end = len(l:t.nodes) - 1
   else
-    let l:parent_idx = l:ancestors[-1]
-    let l:sib_start = l:parent_idx + 1
+    let l:sib_start = l:ancestors[-1] + 1
     let l:sib_end = len(l:t.nodes) - 1
     for l:j in range(l:sib_start, len(l:t.nodes) - 1)
       if l:t.nodes[l:j].depth < l:sel_depth
@@ -289,9 +273,6 @@ function! skyrg#panel#tree#redraw() abort
       endif
     endfor
   endif
-  for l:ai in l:ancestors
-    call s:add_line(l:lines, l:ai)
-  endfor
   let l:sib_vis = l:vis - len(l:ancestors)
   let l:sib_scroll = get(l:t, 'scroll', l:sib_start)
   let l:sib_scroll = max([l:sib_start, min([l:sib_scroll, l:sib_end])])
@@ -302,13 +283,41 @@ function! skyrg#panel#tree#redraw() abort
   endif
   let l:sib_scroll = max([l:sib_start, l:sib_scroll])
   let l:t.scroll = l:sib_scroll
-  for l:i in range(l:sib_scroll, min([l:sib_scroll + l:sib_vis - 1, l:sib_end]))
-    call s:add_line(l:lines, l:i)
-  endfor
+  return {'ancestors': l:ancestors,
+    \ 'sib_first': l:sib_scroll, 'sib_last': min([l:sib_scroll + l:sib_vis - 1, l:sib_end]),
+    \ 'empty': 0, 'title': fnamemodify(l:t.nodes[l:t.idx].path, ':.')}
+endfunction
+
+" Build popup line dicts from prepared data.
+function! s:render_tree(data) abort
+  let l:L = skyrg#panel#get_layout()
+  let l:lines = []
+  call s:render_searchbar(l:lines, l:L)
+  call add(l:lines, skyrg#panel#util#hl_line(' ' . getcwd(), 'skyrg_dim'))
+  if a:data.empty
+    for l:i in range(len(skyrg#panel#state().tree.nodes))
+      call s:add_line(l:lines, l:i)
+    endfor
+    call add(l:lines, skyrg#panel#util#hl_line('     (no matches)', 'skyrg_dim'))
+  else
+    for l:ai in a:data.ancestors
+      call s:add_line(l:lines, l:ai)
+    endfor
+    for l:i in range(a:data.sib_first, a:data.sib_last)
+      call s:add_line(l:lines, l:i)
+    endfor
+  endif
+  return l:lines
+endfunction
+
+function! skyrg#panel#tree#redraw() abort
+  let l:s = skyrg#panel#state()
+  if !l:s.popups.tree | return | endif
+  let l:data = s:prepare()
+  let l:lines = s:render_tree(l:data)
   call popup_settext(l:s.popups.tree, l:lines)
-  let l:node = l:t.nodes[l:t.idx]
-  let l:rel = fnamemodify(l:node.path, ':.')
-  call popup_setoptions(l:s.popups.tree, {'title': ' '.l:rel.' '})
+  let l:title = empty(l:data.title) ? ' Tree ' : ' '.l:data.title.' '
+  call popup_setoptions(l:s.popups.tree, {'title': l:title})
 endfunction
 
 "==============================================================================

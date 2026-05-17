@@ -29,7 +29,7 @@ function! skyrg#panel#results#move(dir) abort
   let l:r = skyrg#panel#state().results
   if empty(l:r.matches) | return | endif
   let l:r.idx = max([0, min([len(l:r.matches)-1, l:r.idx + a:dir])])
-  call skyrg#panel#results#redraw() | call skyrg#panel#preview#update()
+  call skyrg#panel#events#emit('results_changed')
 endfunction
 
 function! skyrg#panel#results#jump() abort
