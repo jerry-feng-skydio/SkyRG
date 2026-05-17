@@ -16,8 +16,8 @@ let s:LABEL_PAD = 9
 
 " Field order matters — index used for preset auto-populate
 let s:QUERY  = 0
-let s:TYPES  = 1
-let s:DIRS   = 2
+let s:DIRS   = 1
+let s:TYPES  = 2
 let s:PRESET = 3
 
 let s:state = {}
@@ -37,8 +37,8 @@ function! skyrg#form#open() abort
     \ 'active': s:QUERY,
     \ 'fields': [
     \   {'label': 'Query',  'value': '', 'pos': 0},
-    \   {'label': 'Types',  'value': '', 'pos': 0},
     \   {'label': 'Dirs',   'value': '', 'pos': 0},
+    \   {'label': 'Types',  'value': '', 'pos': 0},
     \   {'label': 'Preset', 'value': '', 'pos': 0},
     \ ],
     \ }

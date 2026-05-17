@@ -1,10 +1,14 @@
 " autoload/skyrg/panel.vim — Multi-pane search UI (form + results + preview)
 
-let s:QUERY = 0 | let s:TYPES = 1 | let s:DIRS = 2 | let s:PRESET = 3 | let s:GITIGN = 4
+let s:QUERY = 0 | let s:DIRS = 1 | let s:TYPES = 2 | let s:PRESET = 3 | let s:GITIGN = 4
 let s:NFIELDS = 5
-let s:PANE_FORM = 0 | let s:PANE_RESULTS = 1
+let s:PANE_FORM = 0 | let s:PANE_RESULTS = 1 | let s:PANE_TREE = 2
 let s:MODE_SEARCH = 'search' | let s:MODE_BROWSE = 'browse'
 let s:MAX_RESULTS = 500 | let s:PREVIEW_CTX = 10 | let s:SEARCH_DELAY = 300
+let s:TREE_SHOW_FILES = 0
+let s:TREE_SEARCH_NORMAL = 0 | let s:TREE_SEARCH_FUZZY = 1
+let s:TREE_SEARCH_MODE = s:TREE_SEARCH_NORMAL
+highlight SkyRGSel cterm=bold ctermfg=Yellow ctermbg=DarkBlue gui=bold guifg=#FFD700 guibg=#1C3A5F
 
 function! skyrg#panel#open() abort
   if !exists('*popup_create') || !exists('*job_start')
@@ -16,20 +20,22 @@ function! skyrg#panel#open() abort
     \ 'pane': s:PANE_FORM, 'field': s:QUERY, 'closing': 0, 'search_gen': 0, 
     \ 'fields': [
     \   {'label': 'Query',  'value': '', 'pos': 0},
-    \   {'label': 'Types',  'value': '', 'pos': 0},
     \   {'label': 'Dirs',   'value': '', 'pos': 0},
+    \   {'label': 'Types',  'value': '', 'pos': 0},
     \   {'label': 'Preset', 'value': '', 'pos': 0},
     \   {'label': '.gitignore', 'value': 'on', 'pos': 0},
     \ ],
     \ 'matches': [], 'result_idx': 0, 'res_scroll': 0,
-    \ 'form_id': 0, 'results_id': 0, 'preview_id': 0,
+    \ 'form_id': 0, 'results_id': 0, 'preview_id': 0, 'tree_id': 0,
+    \ 'tree_open': 0, 'tree_idx': 0, 'tree_nodes': [], 'tree_expanded': {},
+    \ 'tree_filter': '', 'tree_tab_mode': 0, 'tree_tab_base': '', 'tree_no_matches': 0,
     \ }
   for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
     silent! call prop_type_delete(l:n)
   endfor
   let l:hl = hlexists('TermCursor') ? 'TermCursor' : 'Visual'
   call prop_type_add('skyrg_cursor', {'highlight': l:hl})
-  call prop_type_add('skyrg_sel',    {'highlight': 'CursorLine'})
+  call prop_type_add('skyrg_sel',    {'highlight': 'SkyRGSel'})
   call prop_type_add('skyrg_match',  {'highlight': 'Search'})
   let l:L = s:layout()
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
@@ -53,6 +59,13 @@ function! skyrg#panel#open() abort
     \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
     \ 'line': l:L.pr, 'col': l:L.pc, 'minwidth': l:L.pw, 'maxwidth': l:L.pw,
     \ 'minheight': l:L.ph, 'maxheight': l:L.ph, 'zindex': 100,
+    \ })
+  let s:state.tree_id = popup_create([{'text': '  (Ctrl+Right to open)'}], {
+    \ 'title': ' Tree ', 'border': [], 'borderchars': l:bch,
+    \ 'borderhighlight': ['Comment'], 'padding': [0,1,0,1], 'scrollbar': 1,
+    \ 'line': l:L.tr, 'col': l:L.tc, 'minwidth': l:L.tw, 'maxwidth': l:L.tw,
+    \ 'minheight': l:L.th, 'maxheight': l:L.th, 'zindex': 100,
+    \ 'hidden': 1,
     \ })
 endfunction
 
@@ -78,7 +91,7 @@ function! skyrg#panel#browse(matches, title) abort
   endfor
   let l:hl = hlexists('TermCursor') ? 'TermCursor' : 'Visual'
   call prop_type_add('skyrg_cursor', {'highlight': l:hl})
-  call prop_type_add('skyrg_sel',    {'highlight': 'CursorLine'})
+  call prop_type_add('skyrg_sel',    {'highlight': 'SkyRGSel'})
   call prop_type_add('skyrg_match',  {'highlight': 'Search'})
   let l:L = s:layout()
   let l:bch = ['─','│','─','│','╭','╮','╯','╰']
@@ -147,12 +160,18 @@ function! s:layout() abort
       \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5}
   endif
   let l:fh = 7
+  let l:tw = 30
+  let l:tree_vis = get(s:state, 'tree_open', 0)
+  let l:toff = l:tree_vis ? l:tw + 2 : 0
+  let l:fw2 = max([l:fw - l:toff, 40])
   let l:bh = max([l:H - l:fh - 6, 6])
-  let l:rw = max([float2nr(l:fw * 0.45), 20])
-  let l:pw = max([l:fw - l:rw - 2, 20])
-  return {'fw':l:fw, 'fh':l:fh, 'fr':2, 'fc':3,
-    \ 'rw':l:rw, 'rh':l:bh, 'rr':l:fh+4, 'rc':3,
-    \ 'pw':l:pw, 'ph':l:bh, 'pr':l:fh+4, 'pc':l:rw+5}
+  let l:rw = max([float2nr(l:fw2 * 0.45), 20])
+  let l:pw = max([l:fw2 - l:rw - 2, 20])
+  let l:fc = 3 + l:toff
+  return {'fw':l:fw2, 'fh':l:fh, 'fr':2, 'fc':l:fc,
+    \ 'rw':l:rw, 'rh':l:bh, 'rr':l:fh+4, 'rc':l:fc,
+    \ 'pw':l:pw, 'ph':l:bh, 'pr':l:fh+4, 'pc':l:fc+l:rw+2,
+    \ 'tw':l:tw, 'th':l:H-4, 'tr':2, 'tc':3}
 endfunction
 
 function! s:close() abort
@@ -162,7 +181,7 @@ function! s:close() abort
     call job_stop(s:state.job)
   endif
   if has_key(s:state, 'timer') | call timer_stop(s:state.timer) | endif
-  for l:id in [s:state.form_id, s:state.results_id, s:state.preview_id]
+  for l:id in [s:state.form_id, s:state.results_id, s:state.preview_id, get(s:state, 'tree_id', 0)]
     silent! call popup_close(l:id)
   endfor
   for l:n in ['skyrg_cursor', 'skyrg_sel', 'skyrg_match']
@@ -178,45 +197,58 @@ function! s:on_key(winid, key) abort
   if a:key ==# "\<Esc>"
     call s:close() | return 1
   endif
-  " Up/Down: move match selection
+  " Ctrl+Left: open/focus tree  Ctrl+Right: close tree/focus form
+  if a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>"
+    if a:key ==# "\<C-Left>" && !s:state.tree_open
+      call s:tree_toggle(1)
+    elseif a:key ==# "\<C-Left>" && s:state.tree_open && s:state.pane != s:PANE_TREE
+      call s:set_pane(s:PANE_TREE)
+    elseif a:key ==# "\<C-Right>" && s:state.tree_open && s:state.pane == s:PANE_TREE
+      call s:tree_toggle(0)
+    elseif a:key ==# "\<C-Right>" && s:state.pane != s:PANE_FORM
+      call s:set_pane(s:PANE_FORM)
+    endif
+    return 1
+  endif
+  " Tree mode: Up/Down and Ctrl+Up/Down all navigate the tree
+  if s:state.pane == s:PANE_TREE
+    if a:key ==# "\<Up>" || a:key ==# "\<C-Up>"
+       \|| a:key ==# "\<Down>" || a:key ==# "\<C-Down>"
+      return s:tree_key(a:key)
+    endif
+    return s:tree_key(a:key)
+  endif
+  " Browse mode: only results navigation + Enter
+  if s:state.mode ==# s:MODE_BROWSE
+    if a:key ==# "\<Up>" || a:key ==# "\<Down>"
+      call s:move_result(a:key ==# "\<Up>" ? -1 : 1)
+    elseif a:key ==# "\<PageUp>" || a:key ==# "\<PageDown>"
+      let l:page = s:layout().rh - 2
+      call s:move_result(a:key ==# "\<PageUp>" ? -l:page : l:page)
+    elseif a:key ==# "\<CR>"
+      call s:jump_to_match()
+    endif
+    return 1
+  endif
+  " Query+Results mode: Up/Down = results, Ctrl+Up/Down = fields
   if a:key ==# "\<Up>" || a:key ==# "\<Down>"
     call s:move_result(a:key ==# "\<Up>" ? -1 : 1)
     return 1
   endif
-  " PageUp/PageDown: jump by a page
   if a:key ==# "\<PageUp>" || a:key ==# "\<PageDown>"
     let l:page = s:layout().rh - 2
     call s:move_result(a:key ==# "\<PageUp>" ? -l:page : l:page)
     return 1
   endif
-  " Browse mode: only results navigation + Enter
-  if s:state.mode ==# s:MODE_BROWSE
-    if a:key ==# "\<CR>"
-      call s:jump_to_match()
-    endif
-    return 1
-  endif
-  " Tab / S-Tab: field completion (Types/Dirs)
+  " Tab / S-Tab: field completion (Types/Dirs) or preset cycling (Query)
   if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
     if s:state.field == s:DIRS || s:state.field == s:TYPES
       call s:complete_field(a:key ==# "\<S-Tab>" ? -1 : 1)
       call s:redraw_form()
-    endif
-    return 1
-  endif
-  " Ctrl+Left/Right: prev/next completion selection
-  if a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>"
-    if s:state.field == s:DIRS || s:state.field == s:TYPES
-      call s:complete_field(a:key ==# "\<C-Left>" ? -1 : 1)
+    elseif s:state.field == s:QUERY
+      call s:cycle_preset(a:key ==# "\<Tab>" ? 1 : -1)
       call s:redraw_form()
-    endif
-    return 1
-  endif
-  " Ctrl+Shift+Left/Right: jump to next selection with different first letter
-  if a:key ==# "\<C-S-Left>" || a:key ==# "\<C-S-Right>"
-    if s:state.field == s:DIRS || s:state.field == s:TYPES
-      call s:complete_field_jump_letter(a:key ==# "\<C-S-Left>" ? -1 : 1)
-      call s:redraw_form()
+      call s:schedule_search()
     endif
     return 1
   endif
@@ -274,7 +306,447 @@ function! s:set_pane(p) abort
     call popup_setoptions(s:state.form_id,    {'borderhighlight': [a:p == s:PANE_FORM ? 'Title' : 'Comment']})
   endif
   call popup_setoptions(s:state.results_id, {'borderhighlight': [a:p == s:PANE_RESULTS ? 'Title' : 'Comment']})
+  if s:state.tree_id
+    call popup_setoptions(s:state.tree_id, {'borderhighlight': [a:p == s:PANE_TREE ? 'Title' : 'Comment']})
+  endif
   if s:state.form_id | call s:redraw_form() | endif
+endfunction
+
+"==============================================================================
+" Directory tree panel
+"==============================================================================
+function! s:tree_toggle(open) abort
+  let s:state.tree_open = a:open
+  if a:open
+    if empty(s:state.tree_nodes)
+      call s:tree_init()
+    else
+      call s:redraw_tree()
+    endif
+    call popup_show(s:state.tree_id)
+    call s:set_pane(s:PANE_TREE)
+  else
+    call popup_hide(s:state.tree_id)
+    call s:set_pane(s:PANE_FORM)
+  endif
+  call s:reposition_popups()
+endfunction
+
+function! s:reposition_popups() abort
+  let l:L = s:layout()
+  if s:state.form_id
+    call popup_move(s:state.form_id, {
+      \ 'line': l:L.fr, 'col': l:L.fc,
+      \ 'minwidth': l:L.fw, 'maxwidth': l:L.fw})
+  endif
+  call popup_move(s:state.results_id, {
+    \ 'line': l:L.rr, 'col': l:L.rc,
+    \ 'minwidth': l:L.rw, 'maxwidth': l:L.rw})
+  call popup_move(s:state.preview_id, {
+    \ 'line': l:L.pr, 'col': l:L.pc,
+    \ 'minwidth': l:L.pw, 'maxwidth': l:L.pw})
+  if s:state.tree_id
+    call popup_move(s:state.tree_id, {
+      \ 'line': l:L.tr, 'col': l:L.tc,
+      \ 'minwidth': l:L.tw, 'maxwidth': l:L.tw,
+      \ 'minheight': l:L.th, 'maxheight': l:L.th})
+  endif
+endfunction
+
+function! s:tree_init() abort
+  let s:state.tree_expanded = {}
+  let s:state.tree_idx = 0
+  call s:tree_rebuild()
+endfunction
+
+" List immediate children of a directory (dirs first, then files)
+function! s:tree_ls(dir) abort
+  let l:entries = []
+  let l:raw = globpath(a:dir, '*', 0, 1) + globpath(a:dir, '.*', 0, 1)
+  let l:dirs = []
+  let l:files = []
+  for l:p in l:raw
+    let l:name = fnamemodify(l:p, ':t')
+    if l:name ==# '.' || l:name ==# '..' | continue | endif
+    if l:name ==# '.git' | continue | endif
+    if isdirectory(l:p)
+      call add(l:dirs, l:p)
+    else
+      call add(l:files, l:p)
+    endif
+  endfor
+  call sort(l:dirs) | call sort(l:files)
+  return s:TREE_SHOW_FILES ? l:dirs + l:files : l:dirs
+endfunction
+
+" Build flat list of visible tree nodes from expanded state
+" Each node: {'path': abs_path, 'depth': int, 'is_dir': bool, 'name': str}
+function! s:tree_rebuild() abort
+  let l:root = getcwd()
+  let s:state.tree_nodes = []
+  call s:tree_walk(l:root, 0)
+  if s:state.tree_idx >= len(s:state.tree_nodes)
+    let s:state.tree_idx = max([0, len(s:state.tree_nodes) - 1])
+  endif
+  call s:redraw_tree()
+endfunction
+
+function! s:tree_walk(dir, depth) abort
+  let l:children = s:tree_ls(a:dir)
+  let l:expanded_child = ''
+  for l:p in l:children
+    if has_key(s:state.tree_expanded, l:p)
+      let l:expanded_child = l:p
+      break
+    endif
+  endfor
+  if !empty(l:expanded_child)
+    " Only show the expanded child (siblings hidden)
+    let l:is_dir = isdirectory(l:expanded_child)
+    call add(s:state.tree_nodes, {
+      \ 'path': l:expanded_child, 'depth': a:depth,
+      \ 'is_dir': l:is_dir, 'name': fnamemodify(l:expanded_child, ':t')})
+    if l:is_dir
+      call s:tree_walk(l:expanded_child, a:depth + 1)
+    endif
+  else
+    " Leaf level: filter children by tree_filter
+    let l:filt = get(s:state, 'tree_filter', '')
+    let l:matched = 0
+    for l:p in l:children
+      let l:name = fnamemodify(l:p, ':t')
+      if !empty(l:filt) && !s:tree_match(l:name, l:filt)
+        continue
+      endif
+      let l:is_dir = isdirectory(l:p)
+      call add(s:state.tree_nodes, {
+        \ 'path': l:p, 'depth': a:depth,
+        \ 'is_dir': l:is_dir, 'name': l:name})
+      let l:matched += 1
+    endfor
+    let s:state.tree_no_matches = (!empty(l:filt) && l:matched == 0)
+  endif
+endfunction
+
+" Find the index of the deepest expanded parent in tree_nodes
+function! s:tree_deepest_parent() abort
+  let l:best = -1
+  for l:i in range(len(s:state.tree_nodes))
+    if has_key(s:state.tree_expanded, s:state.tree_nodes[l:i].path)
+      let l:best = l:i
+    endif
+  endfor
+  return l:best
+endfunction
+
+" Find indices of nodes matching the filter among leaf-level children
+function! s:tree_matching_indices() abort
+  let l:filt = get(s:state, 'tree_filter', '')
+  let l:result = []
+  " Find the leaf depth (deepest depth with children listed)
+  let l:leaf_depth = -1
+  for l:n in s:state.tree_nodes
+    if !has_key(s:state.tree_expanded, l:n.path)
+      let l:leaf_depth = l:n.depth
+      break
+    endif
+  endfor
+  if l:leaf_depth < 0 | return l:result | endif
+  for l:i in range(len(s:state.tree_nodes))
+    let l:n = s:state.tree_nodes[l:i]
+    if l:n.depth == l:leaf_depth && !has_key(s:state.tree_expanded, l:n.path)
+      call add(l:result, l:i)
+    endif
+  endfor
+  return l:result
+endfunction
+
+" Match a name against the filter using the current search mode
+function! s:tree_match(name, filt) abort
+  if s:TREE_SEARCH_MODE == s:TREE_SEARCH_NORMAL
+    " Case-insensitive prefix match
+    return a:name[:len(a:filt)-1] ==? a:filt
+  else
+    " Fuzzy: case-insensitive regex match
+    return a:name =~? a:filt
+  endif
+endfunction
+
+function! s:tree_add_line(lines, idx) abort
+  let l:n = s:state.tree_nodes[a:idx]
+  let l:indent = repeat('  ', l:n.depth)
+  let l:icon = l:n.is_dir ? (has_key(s:state.tree_expanded, l:n.path) ? '▼ ' : '▶ ') : '  '
+  let l:text = l:indent . l:icon . l:n.name . (l:n.is_dir ? '/' : '')
+  if a:idx == s:state.tree_idx
+    call add(a:lines, {'text': l:text, 'props': [
+      \ {'col': 1, 'length': len(l:text), 'type': 'skyrg_sel'}]})
+  else
+    call add(a:lines, {'text': l:text})
+  endif
+endfunction
+
+function! s:redraw_tree() abort
+  if !s:state.tree_id | return | endif
+  let l:L = s:layout()
+  " Search bar (2 lines) + project root (1 line) at top = 3 fixed lines
+  let l:vis = l:L.th - 4
+  let l:lines = []
+  " 1. Search bar at top
+  call s:tree_render_searchbar(l:lines, l:L)
+  " 2. Project root
+  call add(l:lines, {'text': ' ' . getcwd()})
+  " Handle no-matches: show parent selected + "(no matches)" hint
+  if s:state.tree_no_matches || empty(s:state.tree_nodes)
+    for l:i in range(len(s:state.tree_nodes))
+      call s:tree_add_line(l:lines, l:i)
+    endfor
+    call add(l:lines, {'text': '     (no matches)'})
+    call popup_settext(s:state.tree_id, l:lines)
+    let l:pi = s:tree_deepest_parent()
+    if l:pi >= 0
+      let s:state.tree_idx = l:pi
+      let l:rel = fnamemodify(s:state.tree_nodes[l:pi].path, ':.')
+      call popup_setoptions(s:state.tree_id, {'title': ' '.l:rel.' '})
+    else
+      call popup_setoptions(s:state.tree_id, {'title': ' Tree '})
+    endif
+    return
+  endif
+  " Split rendering: pinned ancestors + scrollable siblings
+  let l:sel_depth = s:state.tree_nodes[s:state.tree_idx].depth
+  let l:ancestors = []
+  if l:sel_depth > 0
+    let l:d = l:sel_depth
+    for l:j in range(s:state.tree_idx - 1, 0, -1)
+      if s:state.tree_nodes[l:j].depth < l:d
+        call insert(l:ancestors, l:j)
+        let l:d = s:state.tree_nodes[l:j].depth
+      endif
+      if l:d == 0 | break | endif
+    endfor
+  endif
+  let l:sib_start = -1
+  let l:sib_end = -1
+  if empty(l:ancestors)
+    let l:sib_start = 0
+    let l:sib_end = len(s:state.tree_nodes) - 1
+  else
+    let l:parent_idx = l:ancestors[-1]
+    let l:sib_start = l:parent_idx + 1
+    let l:sib_end = len(s:state.tree_nodes) - 1
+    for l:j in range(l:sib_start, len(s:state.tree_nodes) - 1)
+      if s:state.tree_nodes[l:j].depth < l:sel_depth
+        let l:sib_end = l:j - 1
+        break
+      endif
+    endfor
+  endif
+  for l:ai in l:ancestors
+    call s:tree_add_line(l:lines, l:ai)
+  endfor
+  let l:sib_vis = l:vis - len(l:ancestors)
+  let l:sib_scroll = get(s:state, 'tree_scroll', l:sib_start)
+  let l:sib_scroll = max([l:sib_start, min([l:sib_scroll, l:sib_end])])
+  if s:state.tree_idx < l:sib_scroll
+    let l:sib_scroll = s:state.tree_idx
+  elseif s:state.tree_idx >= l:sib_scroll + l:sib_vis
+    let l:sib_scroll = s:state.tree_idx - l:sib_vis + 1
+  endif
+  let l:sib_scroll = max([l:sib_start, l:sib_scroll])
+  let s:state.tree_scroll = l:sib_scroll
+  for l:i in range(l:sib_scroll, min([l:sib_scroll + l:sib_vis - 1, l:sib_end]))
+    call s:tree_add_line(l:lines, l:i)
+  endfor
+  call popup_settext(s:state.tree_id, l:lines)
+  let l:node = s:state.tree_nodes[s:state.tree_idx]
+  let l:rel = fnamemodify(l:node.path, ':.')
+  call popup_setoptions(s:state.tree_id, {'title': ' '.l:rel.' '})
+endfunction
+
+function! s:tree_render_searchbar(lines, L) abort
+  let l:filt = get(s:state, 'tree_filter', '')
+  if s:state.tree_tab_mode
+    let l:bar = ' >' . l:filt
+    call add(a:lines, {'text': l:bar})
+  else
+    let l:bar = ' >' . l:filt
+    let l:cpos = len(l:bar) + 1
+    call add(a:lines, {'text': l:bar . ' ', 'props': [
+      \ {'col': l:cpos, 'length': 1, 'type': 'skyrg_cursor'}]})
+  endif
+  call add(a:lines, {'text': repeat('─', a:L.tw - 2)})
+endfunction
+
+function! s:tree_key(key) abort
+  " --- Backspace ---
+  if a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127)
+    if s:state.tree_tab_mode
+      " Exit tab mode, restore original search text, jump to first match
+      let s:state.tree_tab_mode = 0
+      let s:state.tree_filter = s:state.tree_tab_base
+      call s:tree_rebuild_and_select_first()
+    elseif !empty(s:state.tree_filter)
+      let s:state.tree_filter = s:state.tree_filter[:-2]
+      call s:tree_rebuild_and_select_first()
+    endif
+    return 1
+  endif
+  " --- Ctrl+U: clear filter ---
+  if a:key ==# "\<C-u>"
+    let s:state.tree_filter = ''
+    let s:state.tree_tab_mode = 0
+    call s:tree_rebuild_and_select_first()
+    return 1
+  endif
+  " --- Tab / S-Tab: tab completion mode ---
+  if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
+    let l:matches = s:tree_matching_indices()
+    if empty(l:matches) | return 1 | endif
+    if !s:state.tree_tab_mode
+      " Enter tab mode, save base text
+      let s:state.tree_tab_mode = 1
+      let s:state.tree_tab_base = s:state.tree_filter
+    endif
+    " Find current position in matches and cycle
+    let l:cur = index(l:matches, s:state.tree_idx)
+    if a:key ==# "\<Tab>"
+      let l:next = l:cur < 0 ? 0 : (l:cur + 1) % len(l:matches)
+    else
+      let l:next = l:cur <= 0 ? len(l:matches) - 1 : l:cur - 1
+    endif
+    let s:state.tree_idx = l:matches[l:next]
+    " Update filter to show selected name
+    let s:state.tree_filter = s:state.tree_nodes[s:state.tree_idx].name
+    call s:redraw_tree()
+    return 1
+  endif
+  " --- Right: expand selected folder (same as Space) ---
+  if a:key ==# "\<Right>"
+    let l:nodes = s:state.tree_nodes
+    if !empty(l:nodes)
+      let l:node = l:nodes[s:state.tree_idx]
+      if l:node.is_dir && !has_key(s:state.tree_expanded, l:node.path)
+        let s:state.tree_filter = ''
+        let s:state.tree_tab_mode = 0
+        let s:state.tree_expanded[l:node.path] = 1
+        call s:tree_rebuild()
+        for l:i in range(len(s:state.tree_nodes))
+          if s:state.tree_nodes[l:i].path ==# l:node.path
+            let s:state.tree_idx = l:i
+            if l:i + 1 < len(s:state.tree_nodes)
+                  \ && s:state.tree_nodes[l:i + 1].depth > s:state.tree_nodes[l:i].depth
+              let s:state.tree_idx = l:i + 1
+            endif
+            break
+          endif
+        endfor
+        call s:redraw_tree()
+      endif
+    endif
+    return 1
+  endif
+  " --- Left: jump to parent ---
+  if a:key ==# "\<Left>"
+    let l:pi = s:tree_deepest_parent()
+    if l:pi >= 0
+      let s:state.tree_idx = l:pi
+      let s:state.tree_tab_mode = 0
+      let s:state.tree_filter = ''
+      call s:redraw_tree()
+    endif
+    return 1
+  endif
+  let l:nodes = s:state.tree_nodes
+  " Allow typing even when tree is empty (no matches)
+  if empty(l:nodes) || s:state.tree_no_matches
+    if len(a:key) == 1 && char2nr(a:key) >= 32
+      let s:state.tree_tab_mode = 0
+      let s:state.tree_filter .= a:key
+      call s:tree_rebuild_and_select_first()
+    endif
+    return 1
+  endif
+  let l:node = l:nodes[s:state.tree_idx]
+  " --- Up/Down: navigate ---
+  if a:key ==# "\<Up>" || a:key ==# "\<C-Up>"
+    let s:state.tree_idx = max([0, s:state.tree_idx - 1])
+    let s:state.tree_tab_mode = 0
+    call s:redraw_tree()
+  elseif a:key ==# "\<Down>" || a:key ==# "\<C-Down>"
+    let s:state.tree_idx = min([len(l:nodes) - 1, s:state.tree_idx + 1])
+    let s:state.tree_tab_mode = 0
+    call s:redraw_tree()
+  " --- Space: expand or collapse directory ---
+  elseif a:key ==# ' '
+    if l:node.is_dir
+      if has_key(s:state.tree_expanded, l:node.path)
+        " Collapse
+        let s:state.tree_filter = ''
+        let s:state.tree_tab_mode = 0
+        call remove(s:state.tree_expanded, l:node.path)
+        call s:tree_rebuild()
+        for l:i in range(len(s:state.tree_nodes))
+          if s:state.tree_nodes[l:i].path ==# l:node.path
+            let s:state.tree_idx = l:i
+            break
+          endif
+        endfor
+        call s:redraw_tree()
+      else
+        " Expand: jump to first child
+        let s:state.tree_filter = ''
+        let s:state.tree_tab_mode = 0
+        let s:state.tree_expanded[l:node.path] = 1
+        call s:tree_rebuild()
+        for l:i in range(len(s:state.tree_nodes))
+          if s:state.tree_nodes[l:i].path ==# l:node.path
+            let s:state.tree_idx = l:i
+            if l:i + 1 < len(s:state.tree_nodes)
+                  \ && s:state.tree_nodes[l:i + 1].depth > s:state.tree_nodes[l:i].depth
+              let s:state.tree_idx = l:i + 1
+            endif
+            break
+          endif
+        endfor
+        call s:redraw_tree()
+      endif
+    endif
+  " --- Typing: search mode ---
+  elseif len(a:key) == 1 && char2nr(a:key) >= 33
+    let s:state.tree_tab_mode = 0
+    let s:state.tree_filter .= a:key
+    call s:tree_rebuild_and_select_first()
+  " --- Enter: paste path into Dirs and close tree ---
+  elseif a:key ==# "\<CR>"
+    let l:rel = fnamemodify(l:node.path, ':.')
+    if l:node.is_dir
+      let l:rel = l:rel . '/'
+    endif
+    let l:f = s:state.fields[s:DIRS]
+    let l:f.value = l:rel
+    let l:f.pos = len(l:f.value)
+    let s:state.field = s:DIRS
+    call s:tree_toggle(0)
+    call s:redraw_form()
+    call s:schedule_search()
+  endif
+  return 1
+endfunction
+
+" Rebuild tree and select first matching child
+function! s:tree_rebuild_and_select_first() abort
+  call s:tree_rebuild()
+  let l:matches = s:tree_matching_indices()
+  if !empty(l:matches)
+    let s:state.tree_idx = l:matches[0]
+  else
+    " No matches — select deepest parent
+    let l:pi = s:tree_deepest_parent()
+    if l:pi >= 0
+      let s:state.tree_idx = l:pi
+    endif
+  endif
+  call s:redraw_tree()
 endfunction
 
 "==============================================================================
@@ -289,6 +761,20 @@ function! s:form_key(key) abort
     let s:state.field = (s:state.field - 1 + s:NFIELDS) % s:NFIELDS
   elseif a:key ==# "\<C-Down>"
     let s:state.field = (s:state.field + 1) % s:NFIELDS
+  elseif s:state.field == s:PRESET && (a:key ==# "\<Left>" || a:key ==# "\<Right>")
+    call s:cycle_preset(a:key ==# "\<Right>" ? 1 : -1)
+    let l:changed = 1
+  elseif s:state.field == s:PRESET && (a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127))
+    let l:f.value = '' | let l:f.pos = 0
+    let s:state.fields[s:TYPES].value = ''
+    let s:state.fields[s:TYPES].pos = 0
+    let s:state.fields[s:DIRS].value = ''
+    let s:state.fields[s:DIRS].pos = 0
+    let l:changed = 1
+  elseif s:state.field == s:PRESET
+    " Block all other input on Preset field
+    call s:redraw_form()
+    return 1
   elseif s:state.field == s:GITIGN && a:key ==# ' '
     let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
     let l:changed = 1
@@ -348,6 +834,16 @@ function! s:render_form() abort
       else
         call add(l:lines, {'text': l:text})
       endif
+    elseif l:i == s:PRESET
+      let l:val = empty(l:f.value) ? '(None)' : l:f.value
+      let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
+      let l:text = l:pfx . '◀ ' . l:val . ' ▶'
+      if l:act
+        call add(l:lines, {'text': l:text, 'props': [
+          \ {'col': len(l:pfx)+1, 'length': len(l:text)-len(l:pfx), 'type': 'skyrg_cursor'}]})
+      else
+        call add(l:lines, {'text': l:text})
+      endif
     else
       let l:pfx = printf(' %s %-8s ', l:act ? '>' : ' ', l:f.label . ':')
       let l:text = l:pfx . l:f.value . (l:act ? ' ' : '')
@@ -371,7 +867,7 @@ function! s:hint() abort
   let l:lab = s:state.fields[s:state.field].label
   if l:lab ==# 'Preset'
     let l:n = s:preset_names()
-    let l:t = empty(l:n) ? '  No presets' : '  Presets: '.join(l:n,', ').'  (C-n/C-p)'
+    let l:t = empty(l:n) ? '  No presets' : '  Left/Right: cycle  Backspace: reset'
     return {'text': l:t}
   elseif l:lab ==# 'Types'
     let l:cands = get(s:state, 'type_candidates', [])
@@ -382,14 +878,14 @@ function! s:hint() abort
   elseif l:lab ==# 'Dirs'
     let l:cands = get(s:state, 'dir_candidates', [])
     if !empty(l:cands)
-      return s:hint_with_hl(map(copy(l:cands), 'fnamemodify(v:val, ":.")'), 10)
+      return s:hint_with_hl(map(copy(l:cands), 'fnamemodify(v:val, ":t")'), 10)
     endif
     return {'text': '  e.g. src/,lib/  (Tab to complete, comma-separated)'}
   endif
   if l:lab ==# '.gitignore'
     return {'text': '  Space: toggle  (rg respects .gitignore by default)'}
   endif
-  return {'text': '  C-Up/C-Down: fields  Up/Down: matches  Enter: open  Esc: close'}
+  return {'text': '  C-Up/C-Down: fields  Up/Down: matches  Tab: presets  Enter: open'}
 endfunction
 
 function! s:hint_with_hl(cands, max_show) abort
