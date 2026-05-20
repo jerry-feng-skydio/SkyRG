@@ -50,6 +50,31 @@ function! skyrg#panel#preset#get_summary(name) abort
   return l:r
 endfunction
 
+" Jump to the nearest preset whose name starts with the given letter.
+" Searches forward from the current preset index; wraps around.
+function! skyrg#panel#preset#jump_to_letter(char) abort
+  let l:fm = skyrg#panel#state().form
+  let l:c = skyrg#panel#const()
+  let l:n = skyrg#panel#preset#names()
+  if empty(l:n) | return | endif
+  let l:ch = tolower(a:char)
+  let l:cur = index(l:n, l:fm.fields[l:c.PRESET].value)
+  let l:start = l:cur < 0 ? 0 : l:cur
+  " Search forward from current+1, wrapping around
+  for l:off in range(1, len(l:n))
+    let l:idx = (l:start + l:off) % len(l:n)
+    if tolower(l:n[l:idx][0]) ==# l:ch
+      let l:name = l:n[l:idx]
+      let l:fm.fields[l:c.PRESET].value = l:name
+      let l:fm.fields[l:c.PRESET].pos = len(l:name)
+      let l:s = skyrg#panel#state()
+      let l:s._search_dirty = 1
+      call skyrg#panel#preset#apply(l:name)
+      return
+    endif
+  endfor
+endfunction
+
 function! skyrg#panel#preset#apply(name) abort
   let l:fm = skyrg#panel#state().form
   let l:c = skyrg#panel#const()

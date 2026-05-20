@@ -88,32 +88,72 @@ function! skyrg#panel#preview#invalidate_cache() abort
 endfunction
 
 " Show preset details in the info pane (right of query form).
+" Includes a carousel of all preset names at the bottom.
 function! skyrg#panel#preview#show_preset(name) abort
   let l:s = skyrg#panel#state()
   let l:info = get(l:s.popups, 'info', 0)
   if !l:info | return | endif
-  if empty(a:name)
-    call popup_settext(l:info, [skyrg#panel#util#hl_line('  No preset selected', 'skyrg_dim')])
-    call popup_setoptions(l:info, {'title': ' Info '})
-    return
-  endif
-  let l:sum = skyrg#panel#preset#get_summary(a:name)
   let l:lines = []
-  call add(l:lines, skyrg#panel#util#hl_line(' Preset: ' . a:name, 'skyrg_sel'))
-  if !empty(l:sum.inc_types)
-    call add(l:lines, skyrg#panel#util#hl_line(' +types: ' . join(l:sum.inc_types, ', '), 'skyrg_dim'))
+  if empty(a:name)
+    call add(l:lines, skyrg#panel#util#hl_line(' No preset selected', 'skyrg_dim'))
+  else
+    let l:sum = skyrg#panel#preset#get_summary(a:name)
+    call add(l:lines, skyrg#panel#util#hl_line(' Preset: ' . a:name, 'skyrg_sel'))
+    if !empty(l:sum.inc_types)
+      call add(l:lines, skyrg#panel#util#hl_line(' +types: ' . join(l:sum.inc_types, ', '), 'skyrg_dim'))
+    endif
+    if !empty(l:sum.ign_types)
+      call add(l:lines, skyrg#panel#util#hl_line(' -types: ' . join(l:sum.ign_types, ', '), 'skyrg_dim'))
+    endif
+    if !empty(l:sum.inc_dirs)
+      call add(l:lines, skyrg#panel#util#hl_line(' +dirs:  ' . join(l:sum.inc_dirs, ', '), 'skyrg_dim'))
+    endif
+    if !empty(l:sum.ign_dirs)
+      call add(l:lines, skyrg#panel#util#hl_line(' -dirs:  ' . join(l:sum.ign_dirs, ', '), 'skyrg_dim'))
+    endif
   endif
-  if !empty(l:sum.ign_types)
-    call add(l:lines, skyrg#panel#util#hl_line(' -types: ' . join(l:sum.ign_types, ', '), 'skyrg_dim'))
-  endif
-  if !empty(l:sum.inc_dirs)
-    call add(l:lines, skyrg#panel#util#hl_line(' +dirs:  ' . join(l:sum.inc_dirs, ', '), 'skyrg_dim'))
-  endif
-  if !empty(l:sum.ign_dirs)
-    call add(l:lines, skyrg#panel#util#hl_line(' -dirs:  ' . join(l:sum.ign_dirs, ', '), 'skyrg_dim'))
+  " Build carousel line with all preset names
+  let l:carousel = s:build_carousel(a:name)
+  if !empty(l:carousel)
+    " Pad to push carousel to the bottom of the info pane
+    let l:geo = skyrg#panel#get_layout().geo.info
+    let l:avail = get(l:geo, 'height', 7)
+    while len(l:lines) < l:avail - 1
+      call add(l:lines, skyrg#panel#util#line(''))
+    endwhile
+    call add(l:lines, l:carousel)
   endif
   call popup_settext(l:info, l:lines)
-  call popup_setoptions(l:info, {'title': ' Preset: ' . a:name . ' '})
+  let l:title = empty(a:name) ? ' Info ' : ' Preset: ' . a:name . ' '
+  call popup_setoptions(l:info, {'title': l:title})
+endfunction
+
+" Build a carousel line: " name1 | [name2] | name3 "
+" Active preset is highlighted with skyrg_sel prop.
+function! s:build_carousel(active) abort
+  let l:names = skyrg#panel#preset#names()
+  if empty(l:names)
+    return {}
+  endif
+  let l:sep = ' | '
+  let l:text = ' '
+  let l:props = []
+  for l:i in range(len(l:names))
+    let l:n = l:names[l:i]
+    let l:is_active = l:n ==# a:active
+    if l:is_active
+      let l:start = len(l:text)
+      let l:label = '[' . l:n . ']'
+      let l:text .= l:label
+      call add(l:props, {'col': l:start + 1, 'length': len(l:label), 'type': 'skyrg_sel'})
+    else
+      let l:text .= l:n
+    endif
+    if l:i < len(l:names) - 1
+      let l:text .= l:sep
+    endif
+  endfor
+  return skyrg#panel#util#line(l:text, l:props)
 endfunction
 
 " Clear the info pane.

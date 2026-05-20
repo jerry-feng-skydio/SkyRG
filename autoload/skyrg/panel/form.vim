@@ -33,9 +33,14 @@ function! skyrg#panel#form#on_key(key) abort
     let l:fm.fields[l:c.DIRS].value = ''
     let l:fm.fields[l:c.DIRS].pos = 0
     let l:dirty = 1
+  elseif l:fm.field == l:c.PRESET && len(a:key) == 1 && a:key =~# '[a-zA-Z]'
+    " Letter jump: find nearest preset starting with this letter
+    call skyrg#panel#preset#jump_to_letter(a:key)
+    let l:dirty = 1
   elseif l:fm.field == l:c.PRESET
-    " Block all other input on Preset field
+    " Block non-letter input on Preset field
     call skyrg#panel#form#redraw()
+    call skyrg#panel#preview#show_preset(l:fm.fields[l:c.PRESET].value)
     return 1
 
   " Gitignore toggle
