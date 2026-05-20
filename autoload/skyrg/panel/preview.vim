@@ -11,7 +11,7 @@
 " Syntax spans are cached per search generation and file. Mashing 's'
 " while the query hasn't changed is a no-op.
 
-let s:PREVIEW_CTX = 10
+" Preview context is now dynamic based on popup height (see s:visible_lines())
 
 " Persistent hidden window for syntax analysis
 let s:syn_winid = 0
@@ -48,7 +48,8 @@ function! skyrg#panel#preview#update() abort
   if l:want_syn
     let l:syn_spans = s:get_cached_or_compute(l:m.file, l:m.line)
   endif
-  let l:data = s:prepare(l:m.file, l:m.line, l:syn_spans)
+  let l:vis = s:visible_lines(l:s)
+  let l:data = s:prepare(l:m.file, l:m.line, l:syn_spans, l:vis)
   let l:lines = s:render(l:data, l:m.line)
   call popup_settext(l:s.popups.preview, l:lines)
 endfunction
@@ -86,51 +87,42 @@ function! skyrg#panel#preview#invalidate_cache() abort
   if s:batch_timer | call timer_stop(s:batch_timer) | let s:batch_timer = 0 | endif
 endfunction
 
-" Show preset details in the preview pane
+" Show preset details in the info pane (right of query form).
 function! skyrg#panel#preview#show_preset(name) abort
   let l:s = skyrg#panel#state()
+  let l:info = get(l:s.popups, 'info', 0)
+  if !l:info | return | endif
   if empty(a:name)
-    call popup_settext(l:s.popups.preview, [skyrg#panel#util#hl_line('  No preset selected', 'skyrg_dim')])
-    call popup_setoptions(l:s.popups.preview, {'title': ' Preset '})
+    call popup_settext(l:info, [skyrg#panel#util#hl_line('  No preset selected', 'skyrg_dim')])
+    call popup_setoptions(l:info, {'title': ' Info '})
     return
   endif
   let l:sum = skyrg#panel#preset#get_summary(a:name)
   let l:lines = []
-  call add(l:lines, skyrg#panel#util#hl_line('  Preset: ' . a:name, 'skyrg_sel'))
-  call add(l:lines, skyrg#panel#util#line(''))
-  call add(l:lines, skyrg#panel#util#hl_line('  Include types:', 'skyrg_dim'))
-  if empty(l:sum.inc_types)
-    call add(l:lines, skyrg#panel#util#line('    (all)'))
-  else
-    call add(l:lines, skyrg#panel#util#line('    ' . join(l:sum.inc_types, ', ')))
+  call add(l:lines, skyrg#panel#util#hl_line(' Preset: ' . a:name, 'skyrg_sel'))
+  if !empty(l:sum.inc_types)
+    call add(l:lines, skyrg#panel#util#hl_line(' +types: ' . join(l:sum.inc_types, ', '), 'skyrg_dim'))
   endif
-  call add(l:lines, skyrg#panel#util#line(''))
-  call add(l:lines, skyrg#panel#util#hl_line('  Ignore types:', 'skyrg_dim'))
-  if empty(l:sum.ign_types)
-    call add(l:lines, skyrg#panel#util#line('    (none)'))
-  else
-    call add(l:lines, skyrg#panel#util#line('    ' . join(l:sum.ign_types, ', ')))
+  if !empty(l:sum.ign_types)
+    call add(l:lines, skyrg#panel#util#hl_line(' -types: ' . join(l:sum.ign_types, ', '), 'skyrg_dim'))
   endif
-  call add(l:lines, skyrg#panel#util#line(''))
-  call add(l:lines, skyrg#panel#util#hl_line('  Include dirs:', 'skyrg_dim'))
-  if empty(l:sum.inc_dirs)
-    call add(l:lines, skyrg#panel#util#line('    (cwd)'))
-  else
-    for l:d in l:sum.inc_dirs
-      call add(l:lines, skyrg#panel#util#line('    ' . l:d))
-    endfor
+  if !empty(l:sum.inc_dirs)
+    call add(l:lines, skyrg#panel#util#hl_line(' +dirs:  ' . join(l:sum.inc_dirs, ', '), 'skyrg_dim'))
   endif
-  call add(l:lines, skyrg#panel#util#line(''))
-  call add(l:lines, skyrg#panel#util#hl_line('  Ignore dirs:', 'skyrg_dim'))
-  if empty(l:sum.ign_dirs)
-    call add(l:lines, skyrg#panel#util#line('    (none)'))
-  else
-    for l:d in l:sum.ign_dirs
-      call add(l:lines, skyrg#panel#util#line('    ' . l:d))
-    endfor
+  if !empty(l:sum.ign_dirs)
+    call add(l:lines, skyrg#panel#util#hl_line(' -dirs:  ' . join(l:sum.ign_dirs, ', '), 'skyrg_dim'))
   endif
-  call popup_settext(l:s.popups.preview, l:lines)
-  call popup_setoptions(l:s.popups.preview, {'title': ' Preset: ' . a:name . ' '})
+  call popup_settext(l:info, l:lines)
+  call popup_setoptions(l:info, {'title': ' Preset: ' . a:name . ' '})
+endfunction
+
+" Clear the info pane.
+function! skyrg#panel#preview#clear_info() abort
+  let l:s = skyrg#panel#state()
+  let l:info = get(l:s.popups, 'info', 0)
+  if !l:info | return | endif
+  call popup_settext(l:info, [skyrg#panel#util#line('')])
+  call popup_setoptions(l:info, {'title': ' Info '})
 endfunction
 
 function! skyrg#panel#preview#cleanup() abort
@@ -221,12 +213,25 @@ endfunction
 " Prep / Render (private)
 "==============================================================================
 
+" Compute how many lines the preview popup can display.
+function! s:visible_lines(state) abort
+  let l:geo = skyrg#panel#get_layout().geo.preview
+  return max([get(l:geo, 'height', 20), 6])
+endfunction
+
 " Read file lines and build data dict for rendering.
-" syn_spans may be empty (MATCH_ONLY mode) or a full-file span list.
-function! s:prepare(file, match_line, syn_spans) abort
+" Centers the match line in the visible window, using all available space.
+function! s:prepare(file, match_line, syn_spans, visible) abort
   let l:all = readfile(a:file)
-  let l:s_line = max([0, a:match_line - s:PREVIEW_CTX - 1])
-  let l:e_line = min([len(l:all)-1, a:match_line + s:PREVIEW_CTX - 1])
+  let l:total = len(l:all)
+  let l:half = a:visible / 2
+  " Center the match line; clamp to file boundaries
+  let l:s_line = max([0, a:match_line - 1 - l:half])
+  let l:e_line = l:s_line + a:visible - 1
+  if l:e_line >= l:total
+    let l:e_line = l:total - 1
+    let l:s_line = max([0, l:e_line - a:visible + 1])
+  endif
   return {'file_lines': l:all, 'syn_spans': a:syn_spans,
     \ 'start': l:s_line, 'end': l:e_line}
 endfunction

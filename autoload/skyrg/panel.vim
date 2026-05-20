@@ -95,7 +95,7 @@ function! skyrg#panel#open() abort
   let l:c = s:const
   let s:state = {
     \ 'mode': l:c.MODE_SEARCH, 'pane': l:c.PANE_FORM, 'closing': 0,
-    \ 'popups': {'form': 0, 'results': 0, 'preview': 0, 'tree': 0},
+    \ 'popups': {'form': 0, 'results': 0, 'preview': 0, 'tree': 0, 'info': 0},
     \ 'form': {
     \   'field': l:c.QUERY,
     \   'fields': [
@@ -129,6 +129,12 @@ function! skyrg#panel#open() abort
     \ extend(copy(l:g.preview), {'title': ' Preview '}))
   let s:state.popups.tree = skyrg#panel#popup#create([{'text': '  (Ctrl+Left to open)'}],
     \ extend(copy(l:g.tree), {'title': ' Tree ', 'hidden': 1}))
+  let s:state.popups.info = skyrg#panel#popup#create([{'text': ''}],
+    \ extend(copy(l:g.info), {'title': ' Info '}))
+  augroup SkyRGResize
+    autocmd!
+    autocmd VimResized * call skyrg#panel#reposition_popups()
+  augroup END
 endfunction
 
 "==============================================================================
@@ -193,20 +199,25 @@ function! s:layout() abort
     let l:flat = {'fw':l:fw, 'fh':0, 'fr':0, 'fc':0,
       \ 'rw':l:rw, 'rh':l:bh, 'rr':2, 'rc':3,
       \ 'pw':l:pw, 'ph':l:bh, 'pr':2, 'pc':l:rw+5,
-      \ 'tw':0, 'th':0, 'tr':0, 'tc':0}
+      \ 'tw':0, 'th':0, 'tr':0, 'tc':0,
+      \ 'iw':0, 'ih':0, 'ir':0, 'ic':0}
   else
     let l:fh = 7 | let l:tw = 30
     let l:tree_vis = get(s:state.tree, 'open', 0)
     let l:toff = l:tree_vis ? l:tw + 2 : 0
-    let l:fw2 = max([l:fw - l:toff, 40])
+    let l:total_w = max([l:fw - l:toff, 40])
+    " Split top row: form ~55%, info pane ~45%
+    let l:form_w = max([float2nr(l:total_w * 0.55), 30])
+    let l:info_w = max([l:total_w - l:form_w - 2, 15])
     let l:bh = max([l:H - l:fh - 6, 6])
-    let l:rw = max([float2nr(l:fw2 * 0.45), 20])
-    let l:pw = max([l:fw2 - l:rw - 2, 20])
+    let l:rw = max([float2nr(l:total_w * 0.45), 20])
+    let l:pw = max([l:total_w - l:rw - 2, 20])
     let l:fc = 3 + l:toff
-    let l:flat = {'fw':l:fw2, 'fh':l:fh, 'fr':2, 'fc':l:fc,
+    let l:flat = {'fw':l:form_w, 'fh':l:fh, 'fr':2, 'fc':l:fc,
       \ 'rw':l:rw, 'rh':l:bh, 'rr':l:fh+4, 'rc':l:fc,
       \ 'pw':l:pw, 'ph':l:bh, 'pr':l:fh+4, 'pc':l:fc+l:rw+2,
-      \ 'tw':l:tw, 'th':l:H-4, 'tr':2, 'tc':3}
+      \ 'tw':l:tw, 'th':l:H-4, 'tr':2, 'tc':3,
+      \ 'iw':l:info_w, 'ih':l:fh, 'ir':2, 'ic':l:fc+l:form_w+2}
   endif
   " Per-popup geometry (used by popup factory for create/move)
   let l:flat.geo = {
@@ -214,6 +225,7 @@ function! s:layout() abort
     \ 'results': {'line': l:flat.rr, 'col': l:flat.rc, 'width': l:flat.rw, 'height': l:flat.rh},
     \ 'preview': {'line': l:flat.pr, 'col': l:flat.pc, 'width': l:flat.pw, 'height': l:flat.ph},
     \ 'tree':    {'line': l:flat.tr, 'col': l:flat.tc, 'width': l:flat.tw, 'height': l:flat.th},
+    \ 'info':    {'line': l:flat.ir, 'col': l:flat.ic, 'width': l:flat.iw, 'height': l:flat.ih},
     \ }
   return l:flat
 endfunction
@@ -262,12 +274,13 @@ function! s:close() abort
     call job_stop(s:state.search.job)
   endif
   if has_key(s:state.search, 'timer') | call timer_stop(s:state.search.timer) | endif
-  for l:id in [s:state.popups.form, s:state.popups.results, s:state.popups.preview, get(s:state.popups, 'tree', 0)]
+  for l:id in [s:state.popups.form, s:state.popups.results, s:state.popups.preview, get(s:state.popups, 'tree', 0), get(s:state.popups, 'info', 0)]
     silent! call popup_close(l:id)
   endfor
   call skyrg#panel#events#reset()
   call skyrg#panel#style#cleanup()
   call skyrg#panel#preview#cleanup()
+  silent! autocmd! SkyRGResize
 endfunction
 
 function! s:on_close(id, result) abort
@@ -291,6 +304,7 @@ function! s:set_pane(p) abort
 endfunction
 
 function! s:reposition_popups() abort
+  if s:state.closing | return | endif
   let l:g = s:layout().geo
   if s:state.popups.form
     call skyrg#panel#popup#move(s:state.popups.form, l:g.form)
@@ -300,6 +314,13 @@ function! s:reposition_popups() abort
   if get(s:state.popups, 'tree', 0)
     call skyrg#panel#popup#move(s:state.popups.tree, l:g.tree)
   endif
+  if get(s:state.popups, 'info', 0)
+    call skyrg#panel#popup#move(s:state.popups.info, l:g.info)
+  endif
+  " Re-render content to fill new dimensions
+  if s:state.popups.form | call skyrg#panel#form#redraw() | endif
+  call skyrg#panel#results#redraw()
+  call skyrg#panel#preview#update()
 endfunction
 
 "==============================================================================
