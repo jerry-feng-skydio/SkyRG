@@ -135,3 +135,22 @@ function! s:resolve_base(name) abort
 
   return g:SkyFilter.presets[g:SkyFilter.default]
 endfunction
+
+"==============================================================================
+" Hot-reload: re-source all autoload files and plugin entry point
+"==============================================================================
+function! skyrg#reload() abort
+  let l:root = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
+  " Re-source all autoload files (order doesn't matter for autoload)
+  for l:f in glob(l:root . '/autoload/skyrg/**/*.vim', 0, 1)
+    execute 'source' fnameescape(l:f)
+  endfor
+  execute 'source' fnameescape(l:root . '/autoload/skyrg.vim')
+  " Re-source plugin entry point (bypass load guard)
+  let g:skyrg_reloading = 1
+  execute 'source' fnameescape(l:root . '/plugin/skyrg.vim')
+  unlet g:skyrg_reloading
+  " Reset keymap cache in case user changed g:skyrg_keymap
+  call skyrg#panel#keymap#reset()
+  echom '[SkyRG] Reloaded'
+endfunction
