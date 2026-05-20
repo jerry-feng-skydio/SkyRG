@@ -136,7 +136,7 @@ function! s:hint() abort
     if !empty(l:cands)
       return skyrg#panel#form#hint_with_hl(l:cands, 20)
     endif
-    return skyrg#panel#util#hl_line('  e.g. py,cpp,java  (Tab to complete, comma-separated)', 'skyrg_dim')
+    return skyrg#panel#util#hl_line('  e.g. py,cpp,.proto  (Tab: complete types  .ext: raw extension)', 'skyrg_dim')
   elseif l:lab ==# 'Dirs'
     let l:cands = get(l:s, 'dir_candidates', [])
     if !empty(l:cands)

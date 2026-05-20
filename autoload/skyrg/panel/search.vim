@@ -38,7 +38,12 @@ function! skyrg#panel#search#run() abort
   endif
   for l:t in split(l:f.fields[l:c.TYPES].value, ',')
     let l:t = trim(l:t)
-    if !empty(l:t) | call extend(l:cmd, ['-t', l:t]) | endif
+    if empty(l:t) | continue | endif
+    if l:t[0] ==# '.'
+      call extend(l:cmd, ['-g', '*' . l:t])
+    else
+      call extend(l:cmd, ['-t', l:t])
+    endif
   endfor
   let l:preset_name = trim(l:f.fields[l:c.PRESET].value)
   if !empty(l:preset_name)
