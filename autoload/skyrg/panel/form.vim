@@ -8,72 +8,97 @@
 function! skyrg#panel#form#on_key(key) abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  let l:K = function('skyrg#panel#keymap#is')
   let l:fm = l:s.form
   let l:f = l:fm.fields[l:fm.field]
-  let l:changed = 0
+  let l:field_before = l:fm.field
   " Any non-Tab key resets the tab-cycle state
-  if a:key !=# "\<Tab>" | call skyrg#panel#complete#reset_tab_cycle() | endif
-  if a:key ==# "\<C-Up>"
+  if !l:K(a:key, 'query_complete') | call skyrg#panel#complete#reset_tab_cycle() | endif
+
+  " Up/Down: navigate form fields
+  if l:K(a:key, 'query_field_up')
     let l:fm.field = (l:fm.field - 1 + l:c.NFIELDS) % l:c.NFIELDS
-  elseif a:key ==# "\<C-Down>"
+  elseif l:K(a:key, 'query_field_down')
     let l:fm.field = (l:fm.field + 1) % l:c.NFIELDS
-  elseif l:fm.field == l:c.PRESET && (a:key ==# "\<Left>" || a:key ==# "\<Right>")
-    call skyrg#panel#preset#cycle(a:key ==# "\<Right>" ? 1 : -1)
-    let l:changed = 1
-  elseif l:fm.field == l:c.PRESET && (a:key ==# "\<BS>" || a:key ==# "\<Del>" || a:key ==# nr2char(127))
+
+  " Preset field: Left/Right cycles, BS clears
+  elseif l:fm.field == l:c.PRESET && (l:K(a:key, 'query_cursor_left') || l:K(a:key, 'query_cursor_right'))
+    call skyrg#panel#preset#cycle(l:K(a:key, 'query_cursor_right') ? 1 : -1)
+  elseif l:fm.field == l:c.PRESET && (l:K(a:key, 'query_del_char') || l:K(a:key, 'query_del_forward'))
     let l:f.value = '' | let l:f.pos = 0
     let l:fm.fields[l:c.TYPES].value = ''
     let l:fm.fields[l:c.TYPES].pos = 0
     let l:fm.fields[l:c.DIRS].value = ''
     let l:fm.fields[l:c.DIRS].pos = 0
-    let l:changed = 1
   elseif l:fm.field == l:c.PRESET
     " Block all other input on Preset field
     call skyrg#panel#form#redraw()
     return 1
+
+  " Gitignore toggle
   elseif l:fm.field == l:c.GITIGN && a:key ==# ' '
     let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
-    let l:changed = 1
-  elseif a:key ==# "\<CR>"
-    call skyrg#panel#results#jump()
+
+  " Enter: run search; if already complete + unchanged → activate results
+  elseif l:K(a:key, 'query_search')
+    if get(l:s, '_search_dirty', 1)
+      let l:s._search_dirty = 0
+      call skyrg#panel#search#run()
+    elseif !empty(l:s.results.matches)
+      call skyrg#panel#set_pane(l:c.PANE_RESULTS)
+    endif
+    call skyrg#panel#form#redraw()
     return 1
-  elseif a:key ==# "\<Left>"
+
+  " Cursor movement
+  elseif l:K(a:key, 'query_cursor_left')
     let l:f.pos = max([0, l:f.pos - 1])
-  elseif a:key ==# "\<Right>"
+  elseif l:K(a:key, 'query_cursor_right')
     let l:f.pos = min([len(l:f.value), l:f.pos + 1])
-  elseif a:key ==# "\<Home>"
+  elseif l:K(a:key, 'query_home')
     let l:f.pos = 0
-  elseif a:key ==# "\<End>"
+  elseif l:K(a:key, 'query_end')
     let l:f.pos = len(l:f.value)
-  elseif a:key ==# "\<BS>"
+
+  " Editing
+  elseif l:K(a:key, 'query_del_char')
     if l:f.pos > 0
       let l:f.value = (l:f.pos > 1 ? l:f.value[:l:f.pos-2] : '') . l:f.value[l:f.pos:]
-      let l:f.pos -= 1 | let l:changed = 1
+      let l:f.pos -= 1
+      let l:s._search_dirty = 1
     endif
-  elseif a:key ==# "\<Del>"
+  elseif l:K(a:key, 'query_del_forward')
     if l:f.pos < len(l:f.value)
       let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
       let l:f.value = l:b . (l:f.pos+1 < len(l:f.value) ? l:f.value[l:f.pos+1:] : '')
-      let l:changed = 1
+      let l:s._search_dirty = 1
     endif
-  elseif a:key ==# "\<C-u>"
-    let l:f.value = '' | let l:f.pos = 0 | let l:changed = 1
-  elseif a:key ==# "\<C-w>" || a:key ==# "\<S-BS>"
-    call skyrg#panel#util#del_word(l:f) | let l:changed = 1
+  elseif l:K(a:key, 'query_del_line')
+    let l:f.value = '' | let l:f.pos = 0
+    let l:s._search_dirty = 1
+  elseif l:K(a:key, 'query_del_word')
+    call skyrg#panel#util#del_word(l:f)
+    let l:s._search_dirty = 1
+
+  " C-n/C-p: preset cycling (alternate binding)
   elseif (a:key ==# "\<C-n>" || a:key ==# "\<C-p>") && l:fm.field == l:c.PRESET
-    call skyrg#panel#preset#cycle(a:key ==# "\<C-n>" ? 1 : -1) | let l:changed = 1
+    call skyrg#panel#preset#cycle(a:key ==# "\<C-n>" ? 1 : -1)
+
+  " Printable character input
   elseif len(a:key) == 1 && char2nr(a:key) >= 32 && l:fm.field != l:c.GITIGN
     let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
     let l:f.value = l:b . a:key . l:f.value[l:f.pos:]
-    let l:f.pos += 1 | let l:changed = 1
+    let l:f.pos += 1
+    let l:s._search_dirty = 1
   endif
+
   call skyrg#panel#form#redraw()
+  " Show preset details when Preset field is active; restore match preview otherwise
   if l:fm.field == l:c.PRESET
     call skyrg#panel#preview#show_preset(l:fm.fields[l:c.PRESET].value)
-  elseif a:key ==# "\<C-Up>" || a:key ==# "\<C-Down>"
+  elseif l:field_before != l:fm.field
     call skyrg#panel#preview#update()
   endif
-  if l:changed | call skyrg#panel#search#schedule() | endif
   return 1
 endfunction
 
@@ -152,7 +177,7 @@ function! s:hint() abort
   if l:lab ==# '.gitignore'
     return skyrg#panel#util#hl_line('  Space: toggle  (rg respects .gitignore by default)', 'skyrg_dim')
   endif
-  return skyrg#panel#util#hl_line('  C-Up/C-Down: fields  Up/Down: matches  Tab: presets  Enter: open', 'skyrg_dim')
+  return skyrg#panel#util#hl_line('  Up/Down: fields  Enter: search  Tab: presets  C-Down: results', 'skyrg_dim')
 endfunction
 
 function! skyrg#panel#form#hint_with_hl(cands, max_show) abort

@@ -107,6 +107,7 @@ function! skyrg#panel#open() abort
     \ },
     \ 'results': {'matches': [], 'idx': 0, 'scroll': 0},
     \ 'search': {'gen': 0},
+    \ '_search_dirty': 1,
     \ 'tree': {
     \   'open': 0, 'idx': 0, 'nodes': [], 'expanded': {},
     \   'filter': '', 'tab_mode': 0, 'tab_base': '', 'no_matches': 0,
@@ -303,65 +304,116 @@ endfunction
 "==============================================================================
 function! s:on_key(winid, key) abort
   let l:c = s:const
-  if a:key ==# "\<Esc>"
+  let l:K = function('skyrg#panel#keymap#is')
+
+  " --- Global: close ---
+  if l:K(a:key, 'close')
     call s:close() | return 1
   endif
-  " Ctrl+Left/Right: tree toggle / pane switching
-  if a:key ==# "\<C-Left>" || a:key ==# "\<C-Right>"
-    if a:key ==# "\<C-Left>" && !s:state.tree.open
-      call skyrg#panel#tree#toggle(1)
-    elseif a:key ==# "\<C-Left>" && s:state.tree.open && s:state.pane != l:c.PANE_TREE
-      call s:set_pane(l:c.PANE_TREE)
-    elseif a:key ==# "\<C-Right>" && s:state.tree.open && s:state.pane == l:c.PANE_TREE
-      call skyrg#panel#tree#toggle(0)
-    elseif a:key ==# "\<C-Right>" && s:state.pane != l:c.PANE_FORM
-      call s:set_pane(l:c.PANE_FORM)
-    endif
-    return 1
-  endif
-  " Tree mode: all keys go to tree
+
+  " --- Route by active pane ---
   if s:state.pane == l:c.PANE_TREE
-    return skyrg#panel#tree#on_key(a:key)
+    return s:on_key_tree(a:key, l:K)
+  elseif s:state.pane == l:c.PANE_RESULTS
+    return s:on_key_results(a:key, l:K)
+  else
+    return s:on_key_query(a:key, l:K)
   endif
-  " Browse mode: results nav + Enter
-  if s:state.mode ==# l:c.MODE_BROWSE
-    if a:key ==# "\<Up>" || a:key ==# "\<Down>"
-      call skyrg#panel#results#move(a:key ==# "\<Up>" ? -1 : 1)
-    elseif a:key ==# "\<PageUp>" || a:key ==# "\<PageDown>"
-      call skyrg#panel#results#move(a:key ==# "\<PageUp>" ? -(s:layout().rh - 2) : (s:layout().rh - 2))
-    elseif a:key ==# "\<CR>"
-      call skyrg#panel#results#jump()
+endfunction
+
+" --- Query pane keys ---
+function! s:on_key_query(key, K) abort
+  let l:c = s:const
+
+  " Ctrl+Left → open/activate tree
+  if a:K(a:key, 'query_to_tree')
+    if !s:state.tree.open
+      call skyrg#panel#tree#toggle(1)
+    else
+      call s:set_pane(l:c.PANE_TREE)
     endif
     return 1
   endif
-  " Search mode: Up/Down = results
-  if a:key ==# "\<Up>" || a:key ==# "\<Down>"
-    call skyrg#panel#results#move(a:key ==# "\<Up>" ? -1 : 1)
+
+  " Ctrl+Down → activate results pane
+  if a:K(a:key, 'query_to_results')
+    call s:set_pane(l:c.PANE_RESULTS)
     return 1
   endif
-  if a:key ==# "\<PageUp>" || a:key ==# "\<PageDown>"
-    call skyrg#panel#results#move(a:key ==# "\<PageUp>" ? -(s:layout().rh - 2) : (s:layout().rh - 2))
-    return 1
-  endif
+
   " Tab/S-Tab: completion or preset cycling
-  if a:key ==# "\<Tab>" || a:key ==# "\<S-Tab>"
+  if a:K(a:key, 'query_complete') || a:K(a:key, 'query_complete_rev')
+    let l:rev = a:K(a:key, 'query_complete_rev')
     if s:state.form.field == l:c.DIRS || s:state.form.field == l:c.TYPES
-      call skyrg#panel#complete#field(a:key ==# "\<S-Tab>" ? -1 : 1)
+      call skyrg#panel#complete#field(l:rev ? -1 : 1)
       call skyrg#panel#form#redraw()
     elseif s:state.form.field == l:c.QUERY
-      call skyrg#panel#preset#cycle(a:key ==# "\<Tab>" ? 1 : -1)
+      call skyrg#panel#preset#cycle(l:rev ? -1 : 1)
       call skyrg#panel#form#redraw()
-      call skyrg#panel#search#schedule()
     endif
     return 1
   endif
+
   " Ctrl+Shift+Left/Right: jump letter in completion
-  if (a:key ==# "\<C-S-Left>" || a:key ==# "\<C-S-Right>") && s:state.pane == l:c.PANE_FORM
+  if a:K(a:key, 'query_jump_letter') || a:K(a:key, 'query_jump_letter_r')
     if s:state.form.field == l:c.DIRS || s:state.form.field == l:c.TYPES
-      call skyrg#panel#complete#jump_letter(a:key ==# "\<C-S-Left>" ? -1 : 1)
+      call skyrg#panel#complete#jump_letter(a:K(a:key, 'query_jump_letter') ? -1 : 1)
       call skyrg#panel#form#redraw()
     endif
     return 1
   endif
+
+  " Delegate remaining keys to form handler
   return skyrg#panel#form#on_key(a:key)
+endfunction
+
+" --- Results pane keys ---
+function! s:on_key_results(key, K) abort
+  let l:c = s:const
+
+  " Ctrl+Up → activate query pane (not available in browse mode)
+  if a:K(a:key, 'results_to_query') && s:state.mode !=# l:c.MODE_BROWSE
+    call s:set_pane(l:c.PANE_FORM)
+    return 1
+  endif
+
+  " Up/Down: navigate matches
+  if a:K(a:key, 'results_up')
+    call skyrg#panel#results#move(-1) | return 1
+  endif
+  if a:K(a:key, 'results_down')
+    call skyrg#panel#results#move(1) | return 1
+  endif
+
+  " PageUp/PageDown: page scroll
+  if a:K(a:key, 'results_page_up')
+    call skyrg#panel#results#move(-(s:layout().rh - 2)) | return 1
+  endif
+  if a:K(a:key, 'results_page_down')
+    call skyrg#panel#results#move(s:layout().rh - 2) | return 1
+  endif
+
+  " Enter: open match
+  if a:K(a:key, 'results_open')
+    call skyrg#panel#results#jump() | return 1
+  endif
+
+  return 1
+endfunction
+
+" --- Tree pane keys ---
+function! s:on_key_tree(key, K) abort
+  let l:c = s:const
+
+  " Ctrl+Right → activate query pane
+  if a:K(a:key, 'tree_to_query')
+    if s:state.tree.open
+      call skyrg#panel#tree#toggle(0)
+    endif
+    call s:set_pane(l:c.PANE_FORM)
+    return 1
+  endif
+
+  " Delegate remaining keys to tree handler
+  return skyrg#panel#tree#on_key(a:key)
 endfunction

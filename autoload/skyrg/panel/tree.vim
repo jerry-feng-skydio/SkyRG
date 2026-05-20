@@ -429,9 +429,9 @@ function! skyrg#panel#tree#on_key(key) abort
     let l:f.value = l:rel
     let l:f.pos = len(l:f.value)
     let l:s.form.field = l:c.DIRS
+    let l:s._search_dirty = 1
     call skyrg#panel#tree#toggle(0)
     call skyrg#panel#form#redraw()
-    call skyrg#panel#search#schedule()
   endif
   return 1
 endfunction

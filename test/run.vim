@@ -35,6 +35,7 @@ runtime plugin/skyrg.vim
 " Source test files
 runtime test/test_filter.vim
 runtime test/test_search_cmd.vim
+runtime test/test_keymap.vim
 
 " Summary
 echom ''
