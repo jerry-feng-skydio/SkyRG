@@ -28,7 +28,8 @@ function! skyrg#panel#preset#cycle(dir) abort
   let l:name = l:n[l:idx]
   let l:fm.fields[l:c.PRESET].value = l:name
   let l:fm.fields[l:c.PRESET].pos = len(l:name)
-  let skyrg#panel#state()._search_dirty = 1
+  let l:s = skyrg#panel#state()
+  let l:s._search_dirty = 1
   call skyrg#panel#preset#apply(l:name)
 endfunction
 
