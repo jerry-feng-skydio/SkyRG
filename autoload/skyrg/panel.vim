@@ -131,6 +131,7 @@ function! skyrg#panel#open() abort
     \ extend(copy(l:g.tree), {'title': ' Tree ', 'hidden': 1}))
   let s:state.popups.info = skyrg#panel#popup#create([{'text': ''}],
     \ extend(copy(l:g.info), {'title': ' Info '}))
+  call skyrg#panel#preview#show_preset(s:state.form.fields[l:c.PRESET].value)
   augroup SkyRGResize
     autocmd!
     autocmd VimResized * call skyrg#panel#reposition_popups()

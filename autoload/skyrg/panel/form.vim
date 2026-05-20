@@ -114,12 +114,8 @@ function! skyrg#panel#form#on_key(key) abort
   endif
 
   call skyrg#panel#form#redraw()
-  " Show preset details in the info pane; clear it when leaving Preset field
-  if l:fm.field == l:c.PRESET
-    call skyrg#panel#preview#show_preset(l:fm.fields[l:c.PRESET].value)
-  elseif l:field_before == l:c.PRESET && l:fm.field != l:c.PRESET
-    call skyrg#panel#preview#clear_info()
-  endif
+  " Always keep the info pane in sync with the active preset
+  call skyrg#panel#preview#show_preset(l:fm.fields[l:c.PRESET].value)
   return 1
 endfunction
 
