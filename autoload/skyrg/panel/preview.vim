@@ -33,6 +33,53 @@ function! skyrg#panel#preview#update() abort
   call popup_settext(l:s.popups.preview, l:lines)
 endfunction
 
+" Show preset details in the preview pane
+function! skyrg#panel#preview#show_preset(name) abort
+  let l:s = skyrg#panel#state()
+  if empty(a:name)
+    call popup_settext(l:s.popups.preview, [skyrg#panel#util#hl_line('  No preset selected', 'skyrg_dim')])
+    call popup_setoptions(l:s.popups.preview, {'title': ' Preset '})
+    return
+  endif
+  let l:sum = skyrg#panel#preset#get_summary(a:name)
+  let l:lines = []
+  call add(l:lines, skyrg#panel#util#hl_line('  Preset: ' . a:name, 'skyrg_sel'))
+  call add(l:lines, skyrg#panel#util#line(''))
+  call add(l:lines, skyrg#panel#util#hl_line('  Include types:', 'skyrg_dim'))
+  if empty(l:sum.inc_types)
+    call add(l:lines, skyrg#panel#util#line('    (all)'))
+  else
+    call add(l:lines, skyrg#panel#util#line('    ' . join(l:sum.inc_types, ', ')))
+  endif
+  call add(l:lines, skyrg#panel#util#line(''))
+  call add(l:lines, skyrg#panel#util#hl_line('  Ignore types:', 'skyrg_dim'))
+  if empty(l:sum.ign_types)
+    call add(l:lines, skyrg#panel#util#line('    (none)'))
+  else
+    call add(l:lines, skyrg#panel#util#line('    ' . join(l:sum.ign_types, ', ')))
+  endif
+  call add(l:lines, skyrg#panel#util#line(''))
+  call add(l:lines, skyrg#panel#util#hl_line('  Include dirs:', 'skyrg_dim'))
+  if empty(l:sum.inc_dirs)
+    call add(l:lines, skyrg#panel#util#line('    (cwd)'))
+  else
+    for l:d in l:sum.inc_dirs
+      call add(l:lines, skyrg#panel#util#line('    ' . l:d))
+    endfor
+  endif
+  call add(l:lines, skyrg#panel#util#line(''))
+  call add(l:lines, skyrg#panel#util#hl_line('  Ignore dirs:', 'skyrg_dim'))
+  if empty(l:sum.ign_dirs)
+    call add(l:lines, skyrg#panel#util#line('    (none)'))
+  else
+    for l:d in l:sum.ign_dirs
+      call add(l:lines, skyrg#panel#util#line('    ' . l:d))
+    endfor
+  endif
+  call popup_settext(l:s.popups.preview, l:lines)
+  call popup_setoptions(l:s.popups.preview, {'title': ' Preset: ' . a:name . ' '})
+endfunction
+
 function! skyrg#panel#preview#cleanup() abort
   if s:syn_winid && win_id2win(s:syn_winid)
     silent! execute win_id2win(s:syn_winid) . 'close!'

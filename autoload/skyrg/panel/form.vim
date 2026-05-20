@@ -68,6 +68,11 @@ function! skyrg#panel#form#on_key(key) abort
     let l:f.pos += 1 | let l:changed = 1
   endif
   call skyrg#panel#form#redraw()
+  if l:fm.field == l:c.PRESET
+    call skyrg#panel#preview#show_preset(l:fm.fields[l:c.PRESET].value)
+  elseif a:key ==# "\<C-Up>" || a:key ==# "\<C-Down>"
+    call skyrg#panel#preview#update()
+  endif
   if l:changed | call skyrg#panel#search#schedule() | endif
   return 1
 endfunction

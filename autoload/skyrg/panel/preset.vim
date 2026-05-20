@@ -31,6 +31,23 @@ function! skyrg#panel#preset#cycle(dir) abort
   call skyrg#panel#preset#apply(l:name)
 endfunction
 
+" Return a summary dict for a preset: {inc_types, ign_types, inc_dirs, ign_dirs}
+function! skyrg#panel#preset#get_summary(name) abort
+  let l:r = {'inc_types': [], 'ign_types': [], 'inc_dirs': [], 'ign_dirs': []}
+  let l:f = skyrg#panel#preset#get_sky_filter(a:name)
+  if !empty(l:f)
+    for [l:k, l:v] in items(get(l:f, 'type', {}))
+      call add(l:v ? l:r.inc_types : l:r.ign_types, l:k)
+    endfor
+    for [l:k, l:v] in items(get(l:f, 'dir', {}))
+      call add(l:v ? l:r.inc_dirs : l:r.ign_dirs, l:k)
+    endfor
+    call sort(l:r.inc_types) | call sort(l:r.ign_types)
+    call sort(l:r.inc_dirs)  | call sort(l:r.ign_dirs)
+  endif
+  return l:r
+endfunction
+
 function! skyrg#panel#preset#apply(name) abort
   let l:fm = skyrg#panel#state().form
   let l:c = skyrg#panel#const()
