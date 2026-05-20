@@ -185,9 +185,38 @@ function! s:proto.get_globbing_flags() abort dict
   return l:out
 endfunction
 
+" Build a list of rg glob arguments (for job_start — no shell quoting).
+function! s:proto.get_globbing_args() abort dict
+  let l:out = []
+
+  let l:inc = join(s:get_entries(self, s:TYPE, 1), ',')
+  if l:inc !=# ''
+    call extend(l:out, ['-g', '*.{' . l:inc . '}'])
+  endif
+
+  let l:exc = join(s:get_entries(self, s:TYPE, 0), ',')
+  if l:exc !=# ''
+    call extend(l:out, ['-g', '!*.{' . l:exc . '}'])
+  endif
+
+  for l:dir in s:get_entries(self, s:DIR, 0)
+    if len(l:dir) > 1 && l:dir[-1:] ==# '/'
+      let l:dir = l:dir[:-2]
+    endif
+    call extend(l:out, ['-g', '!' . l:dir . '/**'])
+  endfor
+
+  return l:out
+endfunction
+
 " Build the search directories string for rg.
 function! s:proto.get_search_directories() abort dict
   return join(s:get_entries(self, s:DIR, 1), ' ')
+endfunction
+
+" Return the list of included search directories.
+function! s:proto.get_search_dirs_list() abort dict
+  return s:get_entries(self, s:DIR, 1)
 endfunction
 
 "==============================================================================

@@ -44,10 +44,7 @@ function! skyrg#panel#search#run() abort
   if !empty(l:preset_name)
     let l:filter = skyrg#panel#preset#get_sky_filter(l:preset_name)
     if !empty(l:filter)
-      let l:glob_flags = l:filter.get_globbing_flags()
-      if !empty(l:glob_flags)
-        call extend(l:cmd, split(l:glob_flags))
-      endif
+      call extend(l:cmd, l:filter.get_globbing_args())
     endif
   endif
   call extend(l:cmd, ['--', l:q])
@@ -59,9 +56,9 @@ function! skyrg#panel#search#run() abort
   if !l:has_dir && !empty(l:preset_name)
     let l:filter = skyrg#panel#preset#get_sky_filter(l:preset_name)
     if !empty(l:filter)
-      let l:sdirs = l:filter.get_search_directories()
+      let l:sdirs = l:filter.get_search_dirs_list()
       if !empty(l:sdirs)
-        call extend(l:cmd, split(l:sdirs))
+        call extend(l:cmd, l:sdirs)
         let l:has_dir = 1
       endif
     endif
