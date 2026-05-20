@@ -12,6 +12,7 @@ function! skyrg#panel#form#on_key(key) abort
   let l:fm = l:s.form
   let l:f = l:fm.fields[l:fm.field]
   let l:field_before = l:fm.field
+  let l:dirty = 0
   " Any non-Tab key resets the tab-cycle state
   if !l:K(a:key, 'query_complete') | call skyrg#panel#complete#reset_tab_cycle() | endif
 
@@ -24,12 +25,14 @@ function! skyrg#panel#form#on_key(key) abort
   " Preset field: Left/Right cycles, BS clears
   elseif l:fm.field == l:c.PRESET && (l:K(a:key, 'query_cursor_left') || l:K(a:key, 'query_cursor_right'))
     call skyrg#panel#preset#cycle(l:K(a:key, 'query_cursor_right') ? 1 : -1)
+    let l:dirty = 1
   elseif l:fm.field == l:c.PRESET && (l:K(a:key, 'query_del_char') || l:K(a:key, 'query_del_forward'))
     let l:f.value = '' | let l:f.pos = 0
     let l:fm.fields[l:c.TYPES].value = ''
     let l:fm.fields[l:c.TYPES].pos = 0
     let l:fm.fields[l:c.DIRS].value = ''
     let l:fm.fields[l:c.DIRS].pos = 0
+    let l:dirty = 1
   elseif l:fm.field == l:c.PRESET
     " Block all other input on Preset field
     call skyrg#panel#form#redraw()
@@ -38,14 +41,23 @@ function! skyrg#panel#form#on_key(key) abort
   " Gitignore toggle
   elseif l:fm.field == l:c.GITIGN && a:key ==# ' '
     let l:f.value = l:f.value ==# 'on' ? 'off' : 'on'
+    let l:dirty = 1
 
-  " Enter: run search; if already complete + unchanged → activate results
+  " Enter: behaviour depends on g:skyrg_user_must_initiate_search
   elseif l:K(a:key, 'query_search')
-    if get(l:s, '_search_dirty', 1)
-      let l:s._search_dirty = 0
-      call skyrg#panel#search#run()
-    elseif !empty(l:s.results.matches)
-      call skyrg#panel#set_pane(l:c.PANE_RESULTS)
+    if s:must_initiate()
+      " Manual mode: first Enter runs search, second Enter activates results
+      if get(l:s, '_search_dirty', 1)
+        let l:s._search_dirty = 0
+        call skyrg#panel#search#run()
+      elseif !empty(l:s.results.matches)
+        call skyrg#panel#set_pane(l:c.PANE_RESULTS)
+      endif
+    else
+      " Auto mode: search already running/done, Enter activates results
+      if !empty(l:s.results.matches)
+        call skyrg#panel#set_pane(l:c.PANE_RESULTS)
+      endif
     endif
     call skyrg#panel#form#redraw()
     return 1
@@ -65,31 +77,40 @@ function! skyrg#panel#form#on_key(key) abort
     if l:f.pos > 0
       let l:f.value = (l:f.pos > 1 ? l:f.value[:l:f.pos-2] : '') . l:f.value[l:f.pos:]
       let l:f.pos -= 1
-      let l:s._search_dirty = 1
+      let l:dirty = 1
     endif
   elseif l:K(a:key, 'query_del_forward')
     if l:f.pos < len(l:f.value)
       let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
       let l:f.value = l:b . (l:f.pos+1 < len(l:f.value) ? l:f.value[l:f.pos+1:] : '')
-      let l:s._search_dirty = 1
+      let l:dirty = 1
     endif
   elseif l:K(a:key, 'query_del_line')
     let l:f.value = '' | let l:f.pos = 0
-    let l:s._search_dirty = 1
+    let l:dirty = 1
   elseif l:K(a:key, 'query_del_word')
     call skyrg#panel#util#del_word(l:f)
-    let l:s._search_dirty = 1
+    let l:dirty = 1
 
   " C-n/C-p: preset cycling (alternate binding)
   elseif (a:key ==# "\<C-n>" || a:key ==# "\<C-p>") && l:fm.field == l:c.PRESET
     call skyrg#panel#preset#cycle(a:key ==# "\<C-n>" ? 1 : -1)
+    let l:dirty = 1
 
   " Printable character input
   elseif len(a:key) == 1 && char2nr(a:key) >= 32 && l:fm.field != l:c.GITIGN
     let l:b = l:f.pos > 0 ? l:f.value[:l:f.pos-1] : ''
     let l:f.value = l:b . a:key . l:f.value[l:f.pos:]
     let l:f.pos += 1
+    let l:dirty = 1
+  endif
+
+  " Schedule auto-search or mark dirty depending on config
+  if l:dirty
     let l:s._search_dirty = 1
+    if !s:must_initiate()
+      call skyrg#panel#search#schedule()
+    endif
   endif
 
   call skyrg#panel#form#redraw()
@@ -100,6 +121,10 @@ function! skyrg#panel#form#on_key(key) abort
     call skyrg#panel#preview#update()
   endif
   return 1
+endfunction
+
+function! s:must_initiate() abort
+  return get(g:, 'skyrg_user_must_initiate_search', 0)
 endfunction
 
 "==============================================================================
@@ -177,7 +202,10 @@ function! s:hint() abort
   if l:lab ==# '.gitignore'
     return skyrg#panel#util#hl_line('  Space: toggle  (rg respects .gitignore by default)', 'skyrg_dim')
   endif
-  return skyrg#panel#util#hl_line('  Up/Down: fields  Enter: search  Tab: presets  C-Down: results', 'skyrg_dim')
+  if s:must_initiate()
+    return skyrg#panel#util#hl_line('  Up/Down: fields  Enter: search  Tab: presets  C-Down: results', 'skyrg_dim')
+  endif
+  return skyrg#panel#util#hl_line('  Up/Down: fields  Enter: results  Tab: presets  C-Down: results', 'skyrg_dim')
 endfunction
 
 function! skyrg#panel#form#hint_with_hl(cands, max_show) abort

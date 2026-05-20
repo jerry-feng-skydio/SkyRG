@@ -1,9 +1,15 @@
 " autoload/skyrg/panel/preview.vim — File preview with syntax highlighting
 "
-" Follows prep/render separation:
-"   s:prepare()  — reads file lines + extracts syntax spans for the range
-"   s:render()   — builds popup line dicts with syntax + match highlight
-"   update()     — orchestrates prepare → render → popup_settext
+" Two preview modes:
+"   MATCH_ONLY  (0) — lightweight: line numbers + match highlight only
+"   PREVIEW_SYNTAX (1) — full syntax highlighting + match highlight
+"
+" Syntax computation strategy (g:skyrg_syntax_mode):
+"   'lazy'      — compute spans for a file on first display (default)
+"   'cache_all' — compute spans for ALL result files at once on toggle
+"
+" Syntax spans are cached per search generation and file. Mashing 's'
+" while the query hasn't changed is a no-op.
 
 let s:PREVIEW_CTX = 10
 
@@ -11,11 +17,18 @@ let s:PREVIEW_CTX = 10
 let s:syn_winid = 0
 let s:syn_file = ''
 
+" Timer ID for batch cache_all computation
+let s:batch_timer = 0
+let s:batch_gen = -1
+
 "==============================================================================
 " Public API
 "==============================================================================
+
+" Main update — called when the selected match changes or results arrive.
 function! skyrg#panel#preview#update() abort
   let l:s = skyrg#panel#state()
+  let l:c = skyrg#panel#const()
   let l:r = l:s.results
   if empty(l:r.matches)
     call popup_settext(l:s.popups.preview, [skyrg#panel#util#line('')])
@@ -23,14 +36,54 @@ function! skyrg#panel#preview#update() abort
     return
   endif
   let l:m = l:r.matches[l:r.idx]
-  call popup_setoptions(l:s.popups.preview, {'title': ' '.skyrg#panel#util#short(l:m.file).' '})
+  let l:mode_tag = l:s.preview_mode == l:c.PREVIEW_SYNTAX ? ' [syn] ' : ' '
+  call popup_setoptions(l:s.popups.preview, {
+    \ 'title': l:mode_tag . skyrg#panel#util#short(l:m.file) . ' '})
   if !filereadable(l:m.file)
     call popup_settext(l:s.popups.preview, [skyrg#panel#util#hl_line('  (not readable)', 'skyrg_dim')])
     return
   endif
-  let l:data = s:prepare(l:m.file, l:m.line)
+  let l:want_syn = l:s.preview_mode == l:c.PREVIEW_SYNTAX
+  let l:syn_spans = []
+  if l:want_syn
+    let l:syn_spans = s:get_cached_or_compute(l:m.file, l:m.line)
+  endif
+  let l:data = s:prepare(l:m.file, l:m.line, l:syn_spans)
   let l:lines = s:render(l:data, l:m.line)
   call popup_settext(l:s.popups.preview, l:lines)
+endfunction
+
+" Toggle between MATCH_ONLY and MATCH_SYNTAX_HIGHLIGHTED.
+" Robust: pressing 's' repeatedly with unchanged query is a no-op.
+function! skyrg#panel#preview#toggle_syntax() abort
+  let l:s = skyrg#panel#state()
+  let l:c = skyrg#panel#const()
+  if l:s.preview_mode == l:c.PREVIEW_MATCH_ONLY
+    let l:s.preview_mode = l:c.PREVIEW_SYNTAX
+    " If cache_all mode, start batch computation
+    if s:syntax_mode() ==# 'cache_all' && !empty(l:s.results.matches)
+      call s:start_batch_cache(l:s)
+    endif
+  else
+    let l:s.preview_mode = l:c.PREVIEW_MATCH_ONLY
+  endif
+  call skyrg#panel#preview#update()
+endfunction
+
+" Reset preview mode to MATCH_ONLY (called after each new search).
+function! skyrg#panel#preview#reset_mode() abort
+  let l:s = skyrg#panel#state()
+  let l:s.preview_mode = 0
+  " Stop any running batch computation
+  if s:batch_timer | call timer_stop(s:batch_timer) | let s:batch_timer = 0 | endif
+endfunction
+
+" Invalidate syntax cache (called when search gen changes).
+function! skyrg#panel#preview#invalidate_cache() abort
+  let l:s = skyrg#panel#state()
+  let l:s._syn_cache = {}
+  let l:s._syn_cache_gen = -1
+  if s:batch_timer | call timer_stop(s:batch_timer) | let s:batch_timer = 0 | endif
 endfunction
 
 " Show preset details in the preview pane
@@ -86,24 +139,99 @@ function! skyrg#panel#preview#cleanup() abort
   endif
   let s:syn_winid = 0
   let s:syn_file = ''
+  if s:batch_timer | call timer_stop(s:batch_timer) | let s:batch_timer = 0 | endif
+endfunction
+
+"==============================================================================
+" Configuration helper
+"==============================================================================
+function! s:syntax_mode() abort
+  return get(g:, 'skyrg_syntax_mode', 'lazy')
+endfunction
+
+"==============================================================================
+" Syntax cache
+"==============================================================================
+
+" Return cached spans or compute them (lazy mode: only this file).
+function! s:get_cached_or_compute(file, match_line) abort
+  let l:s = skyrg#panel#state()
+  let l:gen = l:s.search.gen
+  " Invalidate cache on generation change
+  if l:s._syn_cache_gen != l:gen
+    let l:s._syn_cache = {}
+    let l:s._syn_cache_gen = l:gen
+  endif
+  " Return from cache if available
+  if has_key(l:s._syn_cache, a:file)
+    return l:s._syn_cache[a:file]
+  endif
+  " Compute and cache
+  let l:all = readfile(a:file)
+  let l:spans = s:get_syntax_spans(a:file, 1, len(l:all))
+  let l:s._syn_cache[a:file] = l:spans
+  return l:spans
+endfunction
+
+"==============================================================================
+" Batch cache_all computation (incremental via timer)
+"==============================================================================
+function! s:start_batch_cache(state) abort
+  let l:gen = a:state.search.gen
+  " Already cached for this gen — no-op (robust against 's' mashing)
+  if a:state._syn_cache_gen == l:gen && !empty(a:state._syn_cache)
+    return
+  endif
+  let a:state._syn_cache = {}
+  let a:state._syn_cache_gen = l:gen
+  " Collect unique files
+  let l:files = {}
+  for l:m in a:state.results.matches
+    let l:files[l:m.file] = 1
+  endfor
+  let s:batch_queue = keys(l:files)
+  let s:batch_gen = l:gen
+  if s:batch_timer | call timer_stop(s:batch_timer) | endif
+  let s:batch_timer = timer_start(10, function('s:batch_step'), {'repeat': -1})
+endfunction
+
+function! s:batch_step(timer) abort
+  let l:s = skyrg#panel#state()
+  " Abort if generation has changed (new search started)
+  if l:s.search.gen != s:batch_gen || empty(s:batch_queue)
+    call timer_stop(a:timer)
+    let s:batch_timer = 0
+    return
+  endif
+  let l:file = remove(s:batch_queue, 0)
+  if has_key(l:s._syn_cache, l:file) || !filereadable(l:file)
+    return
+  endif
+  let l:all = readfile(l:file)
+  let l:spans = s:get_syntax_spans(l:file, 1, len(l:all))
+  let l:s._syn_cache[l:file] = l:spans
+  " Refresh preview if this is the currently-displayed file
+  let l:r = l:s.results
+  if !empty(l:r.matches) && l:r.matches[l:r.idx].file ==# l:file
+    call skyrg#panel#preview#update()
+  endif
 endfunction
 
 "==============================================================================
 " Prep / Render (private)
 "==============================================================================
 
-" Read file lines and syntax spans for the preview range.
-" Returns: {'file_lines': [...], 'syn_spans': [...], 'start': int, 'end': int}
-function! s:prepare(file, match_line) abort
+" Read file lines and build data dict for rendering.
+" syn_spans may be empty (MATCH_ONLY mode) or a full-file span list.
+function! s:prepare(file, match_line, syn_spans) abort
   let l:all = readfile(a:file)
   let l:s_line = max([0, a:match_line - s:PREVIEW_CTX - 1])
   let l:e_line = min([len(l:all)-1, a:match_line + s:PREVIEW_CTX - 1])
-  let l:syn_spans = s:get_syntax_spans(a:file, l:s_line + 1, l:e_line + 1)
-  return {'file_lines': l:all, 'syn_spans': l:syn_spans,
+  return {'file_lines': l:all, 'syn_spans': a:syn_spans,
     \ 'start': l:s_line, 'end': l:e_line}
 endfunction
 
-" Build popup line dicts with syntax props + match highlight.
+" Build popup line dicts with optional syntax props + match highlight.
 function! s:render(data, match_line) abort
   let l:lines = []
   for l:i in range(a:data.start, a:data.end)
@@ -114,15 +242,16 @@ function! s:render(data, match_line) abort
 
     " Dim line number prefix
     let l:props = [{'col': 1, 'length': l:plen, 'type': 'skyrg_dim'}]
-    let l:span_idx = l:i - a:data.start
-    if l:span_idx < len(a:data.syn_spans)
-      for l:sp in a:data.syn_spans[l:span_idx]
+    " Apply syntax spans if available (indexed by 0-based line number)
+    if !empty(a:data.syn_spans) && l:i < len(a:data.syn_spans)
+      for l:sp in a:data.syn_spans[l:i]
         call add(l:props, {
           \ 'col': l:sp.col + l:plen,
           \ 'length': l:sp.length,
           \ 'type': l:sp.type})
       endfor
     endif
+    " Highlight match line
     if l:ln == a:match_line
       call add(l:props, {'col': 1, 'length': len(l:text), 'type': 'skyrg_match'})
     endif
@@ -208,7 +337,7 @@ function! s:get_syntax_spans(file, start_lnum, end_lnum) abort
 endfunction
 
 function! s:ensure_syn_window(file) abort
-  " If the hidden window already has this file, nothing to do
+  " If the hidden window already has this file loaded with syntax
   if s:syn_winid && win_id2win(s:syn_winid) && s:syn_file ==# a:file
     return
   endif

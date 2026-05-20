@@ -102,6 +102,8 @@ function! s:on_done(gen, ch) abort
   if a:gen != l:se.gen | return | endif
   let l:s.results.matches = l:se.pending
   let l:s.results.idx = 0 | let l:s.results.scroll = 0
+  call skyrg#panel#preview#reset_mode()
+  call skyrg#panel#preview#invalidate_cache()
   call skyrg#panel#events#emit('results_changed')
   redraw
 endfunction

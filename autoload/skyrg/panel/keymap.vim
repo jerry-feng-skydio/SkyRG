@@ -60,6 +60,7 @@ let s:defaults = {
   \ 'results_page_up':    ["\<PageUp>"],
   \ 'results_page_down':  ["\<PageDown>"],
   \ 'results_open':       ["\<CR>"],
+  \ 'results_toggle_syntax': ["s"],
   \ }
 
 " Merged map (computed once on first call)

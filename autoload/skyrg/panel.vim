@@ -53,6 +53,7 @@ let s:const = {
   \ 'NFIELDS': 5,
   \ 'PANE_FORM': 0, 'PANE_RESULTS': 1, 'PANE_TREE': 2,
   \ 'MODE_SEARCH': 'search', 'MODE_BROWSE': 'browse',
+  \ 'PREVIEW_MATCH_ONLY': 0, 'PREVIEW_SYNTAX': 1,
   \ }
 
 "==============================================================================
@@ -108,6 +109,8 @@ function! skyrg#panel#open() abort
     \ 'results': {'matches': [], 'idx': 0, 'scroll': 0},
     \ 'search': {'gen': 0},
     \ '_search_dirty': 1,
+    \ 'preview_mode': 0,
+    \ '_syn_cache': {}, '_syn_cache_gen': -1,
     \ 'tree': {
     \   'open': 0, 'idx': 0, 'nodes': [], 'expanded': {},
     \   'filter': '', 'tab_mode': 0, 'tab_base': '', 'no_matches': 0,
@@ -396,6 +399,12 @@ function! s:on_key_results(key, K) abort
   " Enter: open match
   if a:K(a:key, 'results_open')
     call skyrg#panel#results#jump() | return 1
+  endif
+
+  " s: toggle syntax highlighting in preview
+  if a:K(a:key, 'results_toggle_syntax')
+    call skyrg#panel#preview#toggle_syntax()
+    return 1
   endif
 
   return 1

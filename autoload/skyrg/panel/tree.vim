@@ -432,6 +432,9 @@ function! skyrg#panel#tree#on_key(key) abort
     let l:s._search_dirty = 1
     call skyrg#panel#tree#toggle(0)
     call skyrg#panel#form#redraw()
+    if !get(g:, 'skyrg_user_must_initiate_search', 0)
+      call skyrg#panel#search#schedule()
+    endif
   endif
   return 1
 endfunction
