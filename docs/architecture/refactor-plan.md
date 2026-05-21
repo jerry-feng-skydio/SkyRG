@@ -18,27 +18,27 @@ changing behavior. Old paths become one-line shims.
 
 ### Checklist
 
-- [ ] Create `autoload/skyrg/ui/` directory
-- [ ] Move `panel/popup.vim` → `ui/popup.vim`
+- [x] Create `autoload/skyrg/ui/` directory
+- [x] Move `panel/popup.vim` → `ui/popup.vim`
   - Rename functions: `skyrg#panel#popup#*` → `skyrg#ui#popup#*`
   - Add shim in `panel/popup.vim`: forward calls to new location
-- [ ] Move `panel/style.vim` → `ui/style.vim`
+- [x] Move `panel/style.vim` → `ui/style.vim`
   - Rename: `skyrg#panel#style#*` → `skyrg#ui#style#*`
   - Add shim
-- [ ] Move `panel/events.vim` → `ui/events.vim`
+- [x] Move `panel/events.vim` → `ui/events.vim`
   - Rename: `skyrg#panel#events#*` → `skyrg#ui#events#*`
   - Add shim
-- [ ] Move `panel/util.vim` → `ui/util.vim`
+- [x] Move `panel/util.vim` → `ui/util.vim`
   - Rename: `skyrg#panel#util#*` → `skyrg#ui#util#*`
   - Add shim
-- [ ] Move `panel/keymap.vim` → `ui/keymap.vim`
+- [x] Move `panel/keymap.vim` → `ui/keymap.vim`
   - Rename: `skyrg#panel#keymap#*` → `skyrg#ui#keymap#*`
   - Add shim
   - Note: action names stay search-specific for now; will be generalized in Phase 2
-- [ ] Update all `panel/*.vim` imports to use `ui/` paths
-- [ ] Update `panel.vim` to use `ui/` paths
-- [ ] Run tests — all must pass
-- [ ] Commit: `refactor: extract generic UI primitives into skyrg/ui/`
+- [x] Update all `panel/*.vim` imports to use `ui/` paths (via shims — callers unchanged)
+- [x] Update `panel.vim` to use `ui/` paths (via shims — callers unchanged)
+- [x] Run tests — all 83 pass
+- [x] Commit: `refactor: extract generic UI primitives into skyrg/ui/` (2ae79f1)
 
 ### Shim pattern
 
