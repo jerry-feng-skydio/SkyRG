@@ -261,5 +261,212 @@ panel creation.
 
 | Command | Description |
 |---|---|
-| `:SkyRGLog` | Open the log file in a split |
-| `:SkyRGLogClear` | Clear the log file |
+| `:SkyRG [args]` | Open the search panel (see Quick Start) |
+| `:SkyRGHistory` | Browse past searches |
+| `:SkyRGTasks` | View active/recent tasks with live output |
+| `:SkyRGActionLog` | Open most recent task log in a split |
+| `:SkyRGLog` | Open the SkyRG event log |
+| `:SkyRGLogClear` | Clear the event log |
+| `:SkyRGDebugHistory` | View raw history entries (debug popup) |
+
+# Context popup
+
+The context popup is a cursor-relative action menu. Press your context key
+and pick an action:
+
+```
+╭─────────────────────────────────╮
+│ [w] Search "CaptureSettings"    │
+│ [D] Search "CaptureSettings" in │
+│     vehicle/                    │
+│ [d] Search in this directory    │
+│ [t] Search this filetype        │
+│                                 │
+│ [o] Open SkyRG                  │
+│ [h] History browser             │
+╰─────────────────────────────────╯
+```
+
+## Setup
+
+Set a trigger key in your `.vimrc`:
+```vim
+let g:skyrg_context_key = '<Leader>a'
+```
+
+Keys inside the popup: `j`/`k` navigate, `Enter` execute, letter shortcuts,
+`Esc` close.
+
+# Custom actions
+
+Register actions in your `.vimrc` via `g:skyrg_context_actions`. Actions
+can be pure Vim, synchronous shell, or async jobs.
+
+## Vim action (instant)
+
+```vim
+let g:skyrg_context_actions = [
+  \ {
+  \   'name':      'Go to definition',
+  \   'key':       'g',
+  \   'group':     'lsp',
+  \   'priority':  5,
+  \   'predicate': {ctx -> !empty(ctx.word)},
+  \   'execute':   {ctx -> execute('YcmCompleter GoToDefinition')},
+  \ },
+  \ ]
+```
+
+## Shell action (synchronous, <1s)
+
+```vim
+let g:skyrg_context_actions = [
+  \ {
+  \   'name':    'Copy file path',
+  \   'key':     'p',
+  \   'shell':   {ctx -> 'echo ' . shellescape(ctx.file) . ' | xclip -sel c'},
+  \   'job_opts': {'title': 'Copy path'},
+  \ },
+  \ ]
+```
+
+## Job action (async, for long-running tasks)
+
+```vim
+let g:skyrg_context_actions = [
+  \ {
+  \   'name':    'Example: echo word',
+  \   'key':     'e',
+  \   'group':   'example',
+  \   'priority': 200,
+  \   'job':     {ctx -> '~/.dotfiles/scripts/skyrg_example_action.sh ' . shellescape(ctx.word)},
+  \   'job_opts': {
+  \     'title':  'Echo example',
+  \     'notify': 1,
+  \   },
+  \ },
+  \ ]
+```
+
+## Action shape reference
+
+| Key | Type | Description |
+|---|---|---|
+| `name` | string | Display name (required) |
+| `label_fn` | funcref | Dynamic label: `{ctx -> printf('Search "%s"', ctx.word)}` |
+| `key` | string | Single letter shortcut in the popup |
+| `group` | string | Visual grouping (separator between groups) |
+| `priority` | number | Sort order (lower = higher in list, default: 100) |
+| `predicate` | funcref | Show only when `predicate(ctx)` is truthy |
+| `execute` | funcref | Vim action: `{ctx -> ...}` |
+| `shell` | string/funcref | Sync shell command (string or `{ctx -> cmd}`) |
+| `job` | string/funcref | Async shell command |
+| `job_opts` | dict | Options for shell/job (see below) |
+
+### `job_opts`
+
+| Key | Default | Description |
+|---|---|---|
+| `title` | action name | Display name in task list |
+| `cwd` | project root | Working directory |
+| `env` | `{}` | Extra environment variables |
+| `notify` | `1` | Show completion notification |
+| `on_success` | `[]` | Followup actions on exit 0 |
+| `on_failure` | `[]` | Followup actions on non-zero exit |
+
+### Context dict
+
+Every predicate and execute/shell/job funcref receives a `ctx` dict:
+
+| Key | Description |
+|---|---|
+| `word` | `expand('<cword>')` |
+| `WORD` | `expand('<cWORD>')` |
+| `line` | Current line text |
+| `col` | Cursor column |
+| `filetype` | Buffer filetype |
+| `mode` | `'n'` or `'v'` |
+| `file` | Full file path |
+| `dir` | File's directory |
+| `visual` | Selected text (visual mode only) |
+
+### String interpolation
+
+Shell/job strings support `{ctx.*}` placeholders (auto-shell-escaped):
+```vim
+'shell': 'grep {ctx.word} {ctx.file}'
+" Becomes: grep 'CaptureSettings' '/path/to/file.cpp'
+```
+
+For full control, use a funcref instead.
+
+# Async tasks
+
+Actions dispatched with `job` run asynchronously. You can continue editing
+while they execute.
+
+## Statusline
+
+Add a task progress indicator to your statusline:
+```vim
+set statusline+=%{skyrg#backend#tasks#statusline()}
+```
+
+This shows:
+- `⟳ Build firmware (12s)` while running
+- `✓ Build firmware` for 5s after success
+- `✗ Build firmware` for 5s after failure
+- Empty when idle (zero visual cost)
+
+## Task viewer (`:SkyRGTasks`)
+
+Opens a two-pane popup showing all active/recent tasks with live output:
+```
+┌─────────────────────────────────────────────┐
+│ Tasks                                       │
+├─────────────────────────────────────────────┤
+│ ⟳ Build firmware           12s  [running]   │
+│ ✓ Deploy to drone          3m   [done]      │
+│ ✗ Run tests               45s   [failed]    │
+└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ Output: Build firmware                      │
+├─────────────────────────────────────────────┤
+│ [1234/5678] Compiling vehicle/main.cc       │
+│ [1235/5678] Compiling vehicle/sensors.cc    │
+└─────────────────────────────────────────────┘
+```
+
+Keys: `j`/`k` navigate, `Enter` open full log, `c` cancel, `q` close.
+
+## Followup actions
+
+If an action defines `on_success` or `on_failure`, a small popup appears
+when the task completes offering next steps:
+```vim
+'job_opts': {
+  'on_success': [{
+    'name': 'Deploy to drone',
+    'key':  'd',
+    'job':  'deploy.sh',
+    'job_opts': {'title': 'Deploy'},
+  }],
+  'on_failure': [{
+    'name': 'View errors',
+    'key':  'e',
+    'execute': {ctx -> execute('split ' . ctx.task_log)},
+  }],
+}
+```
+
+## Action logs
+
+Every dispatched action's stdout/stderr is logged to
+`~/.local/share/skyrg/actions/`. Use `:SkyRGActionLog` to open the most
+recent log, or `:SkyRGTasks` → `Enter` to view any task's log.
+
+Retention is configurable:
+```vim
+let g:skyrg_action_log_keep_days = 7       " keep all logs (default: 7)
+let g:skyrg_action_log_keep_failed = 30    " keep failed logs (default: 30)
+```
