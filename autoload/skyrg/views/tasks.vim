@@ -16,6 +16,7 @@ let s:popup_list = 0
 let s:popup_output = 0
 let s:selected = 0
 let s:refresh_timer = 0
+let s:out_opts = {}
 
 "==============================================================================
 " Open
@@ -83,8 +84,8 @@ function! skyrg#views#tasks#open() abort
     \ 'zindex': 250,
     \ })
 
-  " Output preview popup
-  let s:popup_output = popup_create(s:render_output(), {
+  " Output preview popup — stored opts for recreation on refresh
+  let s:out_opts = {
     \ 'title': ' Output ',
     \ 'line': l:list_h + 5,
     \ 'col': (&columns - l:width) / 2,
@@ -98,7 +99,8 @@ function! skyrg#views#tasks#open() abort
     \ 'maxheight': l:out_h,
     \ 'scrollbar': 1,
     \ 'zindex': 249,
-    \ })
+    \ }
+  call s:recreate_output()
 
   " Auto-refresh while open (for running tasks)
   let s:refresh_timer = timer_start(1000, function('s:refresh'), {'repeat': -1})
@@ -160,6 +162,8 @@ function! s:render_output() abort
   if !empty(l:tasks) && s:selected < len(l:tasks)
     let l:t = l:tasks[s:selected]
     let l:title = l:t.title
+    call skyrg#log#debug('views/tasks', 'render_output: task=%s status=%s stdout=%d stderr=%d log=%s',
+      \ l:title, l:t.status, len(l:t.stdout), len(l:t.stderr), get(l:t, 'log_file', 'none'))
     let l:combined = []
     for l:l in l:t.stdout[-50:]
       call add(l:combined, {'text': '  ' . l:l})
@@ -240,8 +244,8 @@ function! s:read_log_output(path) abort
 endfunction
 
 function! s:set_output_title(title) abort
-  if s:popup_output
-    call popup_setoptions(s:popup_output, {'title': ' Output: ' . a:title . ' '})
+  if !empty(s:out_opts)
+    let s:out_opts.title = ' Output: ' . a:title . ' '
   endif
 endfunction
 
@@ -348,10 +352,20 @@ function! s:update() abort
   if s:popup_list
     call popup_settext(s:popup_list, s:render_list())
   endif
+  call s:recreate_output()
+endfunction
+
+" Recreate the output popup from scratch.
+" popup_settext from timer callbacks doesn't visually update a non-filtered
+" popup while another popup's filter is active — so we close + recreate.
+function! s:recreate_output() abort
   if s:popup_output
-    call popup_settext(s:popup_output, s:render_output())
+    silent! call popup_close(s:popup_output)
+    let s:popup_output = 0
   endif
-  redraw
+  if !empty(s:out_opts)
+    let s:popup_output = popup_create(s:render_output(), s:out_opts)
+  endif
 endfunction
 
 function! s:refresh(timer) abort
