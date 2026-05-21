@@ -141,24 +141,23 @@ history into the search view.
 
 ### Checklist
 
-- [ ] Create `backend/history.vim`
-  - [ ] `save(entry)` — append to JSONL file
-  - [ ] `load_all(project_root)` — read + parse + sort
-  - [ ] `load_last(project_root)` — return newest entry
-  - [ ] `search(project_root, filter)` — substring filter
-  - [ ] `delete(project_root, timestamp)` — remove entry
-  - [ ] `project_root()` — git root or cwd
-  - [ ] Deduplication on save
-  - [ ] Compaction on load (if > threshold)
-- [ ] Wire history into search view:
-  - [ ] On open: `load_last()` → pre-fill form (Feature 3)
-  - [ ] On commit (Enter to results or jump): `save()` current query
-  - [ ] Ctrl+Backspace: clear all fields (Feature 3a)
-  - [ ] PageUp/PageDown: history navigation (Feature 4)
-- [ ] Create `backend/favorites.vim`
-  - [ ] `save(entry)`, `remove(idx)`, `load_all()`
-- [ ] Run tests
-- [ ] Commit: `feat: history persistence + in-search history navigation`
+- [x] Create `backend/history.vim`
+  - [x] `save(entry)` — append to JSONL file
+  - [x] `load_all(project_root)` — read + parse + sort (newest first)
+  - [x] `load_last(project_root)` — return newest entry
+  - [x] `search(project_root, filter)` — substring filter
+  - [x] `delete(project_root, timestamp)` — remove entry
+  - [x] `project_root()` — git root or cwd
+  - [x] Deduplication on save (compare against most recent)
+  - [x] Compaction on load (if > 10k entries, keep 30 days + 5k older)
+- [x] Wire history into search view:
+  - [x] On open: `load_last()` → pre-fill form (g:skyrg_restore_last)
+  - [x] On commit (Enter to run search + results jump): `save()` current query
+  - [x] Ctrl+Backspace: clear all fields
+  - [x] PageUp/PageDown: history navigation (saves current, steps through past)
+- [ ] Create `backend/favorites.vim` (deferred to Phase 5)
+- [x] Run tests — 185 pass, 0 fail (17 new history tests)
+- [x] Commit: `feat: history backend + search view integration` (f5300f9)
 
 ## Phase 5 — New Views
 
