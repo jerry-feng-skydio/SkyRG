@@ -168,34 +168,35 @@ build-error navigator using the generic pane system.
 
 ### Checklist
 
-- [ ] Create `views/history.vim` — history browser
-  - [ ] List pane with formatted history entries
-  - [ ] Preview pane showing query details
-  - [ ] Filter bar
-  - [ ] Enter to open search with selected query
-  - [ ] `d` to delete, `f` to favorite
-- [ ] Create `views/favorites.vim` — favorites browser
-  - [ ] Same pattern as history view
-  - [ ] `e` to edit label
-- [ ] Create `backend/context.vim` — action registry
-  - [ ] `register(action)`, `get(context)`, `execute(action, context)`
-  - [ ] Built-in actions (search word, search dir, search filetype)
-  - [ ] User action registration via `g:skyrg_context_actions`
-  - [ ] Filetype-specific actions via `g:skyrg_context_{ft}`
-  - [ ] Helper predicates: `ft()`, `has_cmd()`, `always()`
-- [ ] Create `views/context.vim` — context popup
-  - [ ] Cursor-relative positioning
-  - [ ] List pane with filtered actions
-  - [ ] Number quick-select, letter filtering
-  - [ ] Normal mode + visual mode support
-- [ ] Create `views/build.vim` — build error navigator (basic)
-  - [ ] Accept `{cmd, parser}` config
-  - [ ] List pane (same shape as search results) + preview
-- [ ] Add commands to `plugin/skyrg.vim`:
-  - [ ] `:SkyRGHistory`, `:SkyRGFav`, `:SkyCtx`
-  - [ ] Context key mapping via `g:skyrg_context_key`
-- [ ] Write tests for new views
-- [ ] Commit: `feat: history browser, favorites, context popup, build errors`
+- [x] Create `views/history.vim` — history browser
+  - [x] List entries with relative timestamps (just now, 5m, 3h, etc.)
+  - [x] Uses browse mode for display
+  - [x] Optional filter parameter
+  - [ ] `d` to delete, `f` to favorite (future: needs custom key handler)
+- [x] Create `backend/favorites.vim` — favorites persistence
+  - [x] add/remove/update_label/is_favorited/load_all
+  - [x] JSON array storage per project
+  - [x] Auto-labels from query text
+- [ ] Create `views/favorites.vim` — favorites browser (future)
+- [x] Create `backend/context.vim` — action registry
+  - [x] `register(action)`, `get(context)`, `execute(action, context)`
+  - [x] 8 built-in actions (word, selection, dir, word+dir, type, word+type, open, history)
+  - [x] User action registration via `g:skyrg_context_actions`
+  - [x] Predicate-based filtering on context dict
+  - [x] Priority ordering
+  - [ ] Filetype-specific actions via `g:skyrg_context_{ft}` (future)
+- [x] Create `views/context.vim` — context popup
+  - [x] Cursor-relative positioning
+  - [x] Filtered action list with group separators
+  - [x] Letter shortcuts [key], Enter to execute
+  - [x] j/k/Up/Down navigation
+  - [x] Normal mode + visual mode support
+- [ ] Create `views/build.vim` — build error navigator (future)
+- [x] Add commands to `plugin/skyrg.vim`:
+  - [x] `:SkyRG`, `:SkyRGHistory`
+  - [x] Context key mapping via `g:skyrg_context_key`
+- [x] Write tests: 18 new (203 total, 0 failures)
+- [x] Commit: `feat: context popup, favorites backend, history browser` (bd1f017)
 
 ## Migration Timeline
 
