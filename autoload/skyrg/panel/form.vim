@@ -114,6 +114,8 @@ function! skyrg#panel#form#on_key(key) abort
   " Schedule auto-search or mark dirty depending on config
   if l:dirty
     let l:s._search_dirty = 1
+    call skyrg#log#debug('form', 'field[%d]=%s value="%s"',
+      \ l:fm.field, l:f.label, l:f.value)
     if !s:must_initiate()
       call skyrg#panel#search#schedule()
     endif

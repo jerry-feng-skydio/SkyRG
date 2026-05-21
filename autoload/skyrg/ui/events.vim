@@ -22,6 +22,8 @@ function! skyrg#ui#events#on(event, Fn) abort
 endfunction
 
 function! skyrg#ui#events#emit(event, ...) abort
+  let l:n = len(get(s:listeners, a:event, []))
+  call skyrg#log#debug('events', 'emit "%s" → %d listeners', a:event, l:n)
   for l:Fn in get(s:listeners, a:event, [])
     call call(l:Fn, a:000)
   endfor

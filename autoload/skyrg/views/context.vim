@@ -31,6 +31,8 @@ function! skyrg#views#context#open(mode) abort
   endif
 
   let s:selected = 0
+  call skyrg#log#info('views/context', 'open mode=%s actions=%d word="%s"',
+    \ a:mode, len(s:actions), s:ctx.word)
 
   " Build popup content
   let l:lines = s:render()
@@ -128,6 +130,7 @@ function! s:on_key(winid, key) abort
   " Enter: execute selected action
   if a:key ==# "\<CR>"
     let l:action = s:actions[s:selected]
+    call skyrg#log#info('views/context', 'execute "%s"', l:action.name)
     call popup_close(a:winid)
     call skyrg#backend#context#execute(l:action, s:ctx)
     return 1
@@ -138,6 +141,7 @@ function! s:on_key(winid, key) abort
     for l:i in range(len(s:actions))
       if get(s:actions[l:i], 'key', '') ==# a:key
         let l:action = s:actions[l:i]
+        call skyrg#log#info('views/context', 'execute "%s" (key=%s)', l:action.name, a:key)
         call popup_close(a:winid)
         call skyrg#backend#context#execute(l:action, s:ctx)
         return 1

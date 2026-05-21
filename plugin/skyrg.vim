@@ -14,12 +14,16 @@ endif
 
 " Initialize the filter system
 call skyrg#filter#init()
+call skyrg#log#info('plugin', 'loaded level=%s file=%s',
+  \ toupper(get(g:, 'skyrg_log_level', 'INFO')), skyrg#log#file())
 
 " Commands
-command! -nargs=* SkyRG        call skyrg#views#search#open(<args>)
-command! -nargs=0 SkyRGHistory call skyrg#views#history#open()
-command! -nargs=0 YRefs        call skyrg#panel#ycm_refs()
-command! -nargs=0 SkyRGReload  call skyrg#reload()
+command! -nargs=* SkyRG         call skyrg#views#search#open(<args>)
+command! -nargs=0 SkyRGHistory  call skyrg#views#history#open()
+command! -nargs=0 SkyRGLog      execute 'split' skyrg#log#file()
+command! -nargs=0 SkyRGLogClear call skyrg#log#clear() | echo '[SkyRG] Log cleared'
+command! -nargs=0 YRefs         call skyrg#panel#ycm_refs()
+command! -nargs=0 SkyRGReload   call skyrg#reload()
 
 " Context popup key mapping (user sets g:skyrg_context_key in .vimrc)
 if exists('g:skyrg_context_key') && !empty(g:skyrg_context_key)

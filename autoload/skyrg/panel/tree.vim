@@ -18,6 +18,7 @@ function! skyrg#panel#tree#toggle(open) abort
   let l:c = skyrg#panel#const()
   let l:t = l:s.tree
   let l:t.open = a:open
+  call skyrg#log#debug('tree', 'toggle open=%d', a:open)
   if a:open
     if empty(l:t.nodes)
       call skyrg#panel#tree#init()

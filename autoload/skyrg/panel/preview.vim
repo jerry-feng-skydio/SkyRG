@@ -59,6 +59,8 @@ endfunction
 function! skyrg#panel#preview#toggle_syntax() abort
   let l:s = skyrg#panel#state()
   let l:c = skyrg#panel#const()
+  call skyrg#log#debug('preview', 'toggle_syntax %d → %d', l:s.preview_mode,
+    \ l:s.preview_mode == l:c.PREVIEW_MATCH_ONLY ? l:c.PREVIEW_SYNTAX : l:c.PREVIEW_MATCH_ONLY)
   if l:s.preview_mode == l:c.PREVIEW_MATCH_ONLY
     let l:s.preview_mode = l:c.PREVIEW_SYNTAX
     " If cache_all mode, start batch computation

@@ -42,6 +42,7 @@ runtime test/test_backend_rg.vim
 runtime test/test_history.vim
 runtime test/test_context.vim
 runtime test/test_favorites.vim
+runtime test/test_logging.vim
 
 " Summary
 echom ''

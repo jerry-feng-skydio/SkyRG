@@ -74,6 +74,8 @@ function! skyrg#panel#search#run() abort
     endif
   endif
   if !l:has_dir | call add(l:cmd, '.') | endif
+  call skyrg#log#info('search', 'run gen=%d query="%s"', l:se.gen, l:q)
+  call skyrg#log#debug('search', 'cmd: %s', join(l:cmd, ' '))
   let l:gen = l:se.gen
   let l:se.pending = []
   let l:se.job = job_start(l:cmd, {
@@ -88,6 +90,7 @@ function! s:on_err(gen, ch, msg) abort
   let l:se = skyrg#panel#state().search
   if a:gen != l:se.gen | return | endif
   let l:se.rg_error = a:msg
+  call skyrg#log#warn('search', 'rg error gen=%d: %s', a:gen, a:msg)
 endfunction
 
 function! s:on_out(gen, ch, msg) abort
@@ -105,6 +108,7 @@ function! s:on_done(gen, ch) abort
   let l:s = skyrg#panel#state()
   let l:se = l:s.search
   if a:gen != l:se.gen | return | endif
+  call skyrg#log#info('search', 'done gen=%d results=%d', a:gen, len(l:se.pending))
   let l:s.results.matches = l:se.pending
   let l:s.results.idx = 0 | let l:s.results.scroll = 0
   call skyrg#panel#preview#reset_mode()

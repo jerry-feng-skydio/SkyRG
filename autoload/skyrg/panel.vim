@@ -93,6 +93,10 @@ function! skyrg#panel#open(...) abort
     return
   endif
   let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
+  call skyrg#log#info('panel', 'open mode=search')
+  if !empty(l:params)
+    call skyrg#log#data('panel', 'open params', l:params)
+  endif
   let l:c = s:const
   let s:state = {
     \ 'mode': l:c.MODE_SEARCH, 'pane': l:c.PANE_FORM, 'closing': 0,
@@ -305,6 +309,7 @@ endfunction
 "==============================================================================
 function! s:close() abort
   if s:state.closing | return | endif
+  call skyrg#log#info('panel', 'close')
   let s:state.closing = 1
   if has_key(s:state.search, 'job') && job_status(s:state.search.job) ==# 'run'
     call job_stop(s:state.search.job)
@@ -328,6 +333,8 @@ endfunction
 "==============================================================================
 function! s:set_pane(p) abort
   let l:c = s:const
+  let l:names = {l:c.PANE_FORM: 'form', l:c.PANE_RESULTS: 'results', l:c.PANE_TREE: 'tree'}
+  call skyrg#log#debug('panel', 'set_pane → %s', get(l:names, a:p, string(a:p)))
   let s:state.pane = a:p
   if s:state.popups.form
     call popup_setoptions(s:state.popups.form, {'borderhighlight': [a:p == l:c.PANE_FORM ? 'Title' : 'Comment']})
@@ -365,6 +372,7 @@ endfunction
 function! s:on_key(winid, key) abort
   let l:c = s:const
   let l:K = function('skyrg#panel#keymap#is')
+  call skyrg#log#debug('panel/key', 'key=%s pane=%d', strtrans(a:key), s:state.pane)
 
   " --- Global: close ---
   if l:K(a:key, 'close')

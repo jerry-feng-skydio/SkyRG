@@ -75,6 +75,7 @@ function! skyrg#backend#history#save(entry) abort
   let l:file = s:history_file()
   let l:line = json_encode(l:entry)
   call writefile([l:line], l:file, 'a')
+  call skyrg#log#debug('history', 'saved query="%s"', l:entry.query)
 endfunction
 
 " Compare two entries ignoring timestamp and result_count.
@@ -109,6 +110,7 @@ function! skyrg#backend#history#load_all(...) abort
   endfor
   " Newest first
   call reverse(l:entries)
+  call skyrg#log#debug('history', 'load_all entries=%d', len(l:entries))
   " Compact if over threshold
   if len(l:entries) > s:MAX_ENTRIES
     call s:compact(l:root, l:entries)
@@ -173,6 +175,7 @@ function! skyrg#backend#history#delete(timestamp, ...) abort
     endtry
   endfor
   call writefile(l:kept, l:file)
+  call skyrg#log#debug('history', 'deleted ts=%d, %d entries remain', a:timestamp, len(l:kept))
 endfunction
 
 "==============================================================================
@@ -207,4 +210,5 @@ function! s:compact(root, entries) abort
   let l:tmp = l:file . '.tmp'
   call writefile(l:lines, l:tmp)
   call rename(l:tmp, l:file)
+  call skyrg#log#info('history', 'compacted %d → %d entries', len(a:entries), len(l:final))
 endfunction

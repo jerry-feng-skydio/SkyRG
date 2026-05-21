@@ -37,6 +37,7 @@ function! skyrg#views#search#open(...) abort
     endif
   endif
   call skyrg#panel#open(l:params)
+  call skyrg#log#info('views/search', 'open')
   " Reset history navigation state
   let s:hist_nav = {'entries': [], 'nav_idx': -1, 'saved_query': {}}
 endfunction
@@ -124,6 +125,7 @@ function! skyrg#views#search#commit_to_history(...) abort
   if a:0 > 0
     let l:entry.result_count = a:1
   endif
+  call skyrg#log#info('views/search', 'commit_to_history query="%s"', l:entry.query)
   call skyrg#backend#history#save(l:entry)
 endfunction
 
@@ -145,6 +147,7 @@ function! skyrg#views#search#history_prev() abort
   else
     return
   endif
+  call skyrg#log#debug('views/search', 'history_prev idx=%d/%d', s:hist_nav.nav_idx, len(s:hist_nav.entries))
   call skyrg#views#search#load_query(s:hist_nav.entries[s:hist_nav.nav_idx])
 endfunction
 
@@ -179,6 +182,7 @@ endfunction
 "==============================================================================
 
 function! skyrg#views#search#clear_all() abort
+  call skyrg#log#info('views/search', 'clear_all')
   try
     let l:s = skyrg#panel#state()
   catch

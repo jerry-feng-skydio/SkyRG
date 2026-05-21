@@ -36,6 +36,7 @@ function! skyrg#panel#results#jump() abort
   let l:r = skyrg#panel#state().results
   if empty(l:r.matches) | return | endif
   let l:m = l:r.matches[l:r.idx]
+  call skyrg#log#info('results', 'jump %s:%d:%d', l:m.file, l:m.line, l:m.col)
   " Commit query to history before closing
   call skyrg#views#search#commit_to_history(len(l:r.matches))
   call skyrg#panel#close()

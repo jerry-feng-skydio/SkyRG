@@ -48,6 +48,8 @@ function! skyrg#backend#rg#new() abort
     endif
 
     let l:cmd = s:build_cmd(a:params)
+    call skyrg#log#info('backend/rg', 'run gen=%d query="%s"', self._gen, l:query)
+    call skyrg#log#debug('backend/rg', 'cmd: %s', join(l:cmd, ' '))
     let l:gen = self._gen
     let l:be = self
 
@@ -61,6 +63,7 @@ function! skyrg#backend#rg#new() abort
 
   function! l:backend.cancel() dict abort
     if type(self._job) != v:t_number && job_status(self._job) ==# 'run'
+      call skyrg#log#debug('backend/rg', 'cancel gen=%d', self._gen)
       call job_stop(self._job)
     endif
   endfunction
@@ -157,6 +160,7 @@ endfunction
 function! s:on_err(be, gen, ch, msg) abort
   if a:gen != a:be._gen | return | endif
   let a:be._error = a:msg
+  call skyrg#log#warn('backend/rg', 'error gen=%d: %s', a:gen, a:msg)
   if has_key(a:be._cbs, 'on_error')
     call a:be._cbs.on_error(a:msg)
   endif
@@ -164,6 +168,7 @@ endfunction
 
 function! s:on_done(be, gen, ch) abort
   if a:gen != a:be._gen | return | endif
+  call skyrg#log#info('backend/rg', 'done gen=%d results=%d', a:gen, len(a:be._pending))
   if has_key(a:be._cbs, 'on_done')
     call a:be._cbs.on_done(a:be._pending)
   endif
