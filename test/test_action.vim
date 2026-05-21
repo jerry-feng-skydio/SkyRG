@@ -244,3 +244,104 @@ function! s:test_resolve_cmd_funcref()
   call s:teardown()
 endfunction
 call s:test_resolve_cmd_funcref()
+
+"==============================================================================
+" Output parsing tests
+"==============================================================================
+
+function! s:test_parse_none()
+  let l:result = skyrg#backend#action#parse_output(['hello'], 'none')
+  call AssertEqual([], l:result, 'parse none: returns empty')
+endfunction
+call s:test_parse_none()
+
+function! s:test_parse_empty()
+  let l:result = skyrg#backend#action#parse_output([], 'matches')
+  call AssertEqual([], l:result, 'parse empty: returns empty')
+endfunction
+call s:test_parse_empty()
+
+function! s:test_parse_lines()
+  let l:input = ['line one', 'line two', 'line three']
+  let l:result = skyrg#backend#action#parse_output(l:input, 'lines')
+  call AssertEqual(3, len(l:result), 'parse lines: count')
+  call AssertEqual('line one', l:result[0], 'parse lines: first')
+  call AssertEqual('line three', l:result[2], 'parse lines: last')
+  " Verify it's a copy, not a reference
+  call add(l:result, 'extra')
+  call AssertEqual(3, len(l:input), 'parse lines: is a copy')
+endfunction
+call s:test_parse_lines()
+
+function! s:test_parse_matches_file_line_col_text()
+  let l:input = [
+    \ 'src/main.cc:42:10:undefined reference',
+    \ 'src/util.h:7:3: warning: unused var',
+    \ ]
+  let l:result = skyrg#backend#action#parse_output(l:input, 'matches')
+  call AssertEqual(2, len(l:result), 'parse matches f:l:c:t count')
+  call AssertEqual('src/main.cc', l:result[0].file, 'parse matches: file')
+  call AssertEqual(42, l:result[0].lnum, 'parse matches: lnum')
+  call AssertEqual(10, l:result[0].col, 'parse matches: col')
+  call AssertEqual('undefined reference', l:result[0].text, 'parse matches: text')
+  call AssertEqual(3, l:result[1].col, 'parse matches: second col')
+endfunction
+call s:test_parse_matches_file_line_col_text()
+
+function! s:test_parse_matches_file_line_text()
+  let l:input = ['Makefile:15:all: deps missing']
+  let l:result = skyrg#backend#action#parse_output(l:input, 'matches')
+  call AssertEqual(1, len(l:result), 'parse matches f:l:t count')
+  call AssertEqual('Makefile', l:result[0].file, 'parse matches: file no col')
+  call AssertEqual(15, l:result[0].lnum, 'parse matches: lnum no col')
+  call AssertEqual(0, l:result[0].col, 'parse matches: col is 0')
+endfunction
+call s:test_parse_matches_file_line_text()
+
+function! s:test_parse_matches_skip_non_matching()
+  let l:input = [
+    \ 'Building target //vehicle:main',
+    \ 'src/main.cc:42:10:error here',
+    \ '2 errors found',
+    \ ]
+  let l:result = skyrg#backend#action#parse_output(l:input, 'matches')
+  call AssertEqual(1, len(l:result), 'parse matches: skips non-matching')
+  call AssertEqual('src/main.cc', l:result[0].file, 'parse matches: correct match')
+endfunction
+call s:test_parse_matches_skip_non_matching()
+
+function! s:test_parse_json_blob()
+  let l:input = ['{"key": "value", "num": 42}']
+  let l:result = skyrg#backend#action#parse_output(l:input, 'json')
+  call Assert(type(l:result) == v:t_dict, 'parse json blob: is dict')
+  call AssertEqual('value', l:result.key, 'parse json blob: key')
+  call AssertEqual(42, l:result.num, 'parse json blob: num')
+endfunction
+call s:test_parse_json_blob()
+
+function! s:test_parse_json_array()
+  let l:input = ['[1, 2, 3]']
+  let l:result = skyrg#backend#action#parse_output(l:input, 'json')
+  call Assert(type(l:result) == v:t_list, 'parse json array: is list')
+  call AssertEqual(3, len(l:result), 'parse json array: length')
+endfunction
+call s:test_parse_json_array()
+
+function! s:test_parse_jsonl()
+  let l:input = [
+    \ '{"file": "a.cc", "line": 1}',
+    \ '{"file": "b.cc", "line": 2}',
+    \ '',
+    \ ]
+  let l:result = skyrg#backend#action#parse_output(l:input, 'json')
+  call AssertEqual(2, len(l:result), 'parse jsonl: count')
+  call AssertEqual('a.cc', l:result[0].file, 'parse jsonl: first file')
+  call AssertEqual(2, l:result[1].line, 'parse jsonl: second line')
+endfunction
+call s:test_parse_jsonl()
+
+function! s:test_parse_unknown_format()
+  let l:result = skyrg#backend#action#parse_output(['hello'], 'bogus')
+  call AssertEqual([], l:result, 'parse unknown: returns empty')
+endfunction
+call s:test_parse_unknown_format()

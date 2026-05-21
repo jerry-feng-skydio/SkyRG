@@ -175,6 +175,14 @@ function! s:on_exit(task_id, job, exit_code) abort
   let l:opts = get(l:opts, 'job_opts', {})
   let l:dur = l:task.end_time - l:task.start_time
 
+  " Parse structured output if requested
+  let l:fmt = get(l:opts, 'output_format', 'none')
+  let l:task.task_output = s:parse_output(l:task.stdout, l:fmt)
+  if l:fmt !=# 'none'
+    call skyrg#log#info('action', 'parsed output format=%s items=%d',
+      \ l:fmt, type(l:task.task_output) == v:t_list ? len(l:task.task_output) : 1)
+  endif
+
   " Notification
   if get(l:opts, 'notify', 1)
     if a:exit_code == 0
@@ -209,6 +217,7 @@ function! s:show_followup(task, followups) abort
   let l:ctx.task_exit = a:task.exit_code
   let l:ctx.task_stdout = a:task.stdout
   let l:ctx.task_stderr = a:task.stderr
+  let l:ctx.task_output = get(a:task, 'task_output', [])
   let l:ctx.task_log = get(a:task, 'log_file', '')
 
   " Register followups as temporary context actions and show popup
@@ -306,6 +315,90 @@ function! s:followup_key(winid, key) abort
     endfor
   endif
   return 1
+endfunction
+
+"==============================================================================
+" Output parsing
+"==============================================================================
+
+" Public API for output parsing (also used in tests).
+function! skyrg#backend#action#parse_output(stdout, format) abort
+  return s:parse_output(a:stdout, a:format)
+endfunction
+
+" Parse raw stdout lines into structured data based on output_format.
+"
+" Formats:
+"   'matches' — file:line[:col]:text (ripgrep/compiler output)
+"   'json'    — parse entire stdout as JSON (or one JSON object per line)
+"   'lines'   — raw string list (passthrough)
+"   'none'    — no parsing, returns []
+function! s:parse_output(stdout, format) abort
+  if a:format ==# 'none' || empty(a:stdout)
+    return []
+  endif
+
+  if a:format ==# 'lines'
+    return copy(a:stdout)
+  endif
+
+  if a:format ==# 'json'
+    return s:parse_json(a:stdout)
+  endif
+
+  if a:format ==# 'matches'
+    return s:parse_matches(a:stdout)
+  endif
+
+  call skyrg#log#warn('action', 'unknown output_format: %s', a:format)
+  return []
+endfunction
+
+" Parse file:line[:col]:text matches (rg, gcc, clang, etc.)
+" Returns list of dicts: {'file': ..., 'lnum': ..., 'col': ..., 'text': ...}
+function! s:parse_matches(lines) abort
+  let l:results = []
+  for l:line in a:lines
+    " Try file:line:col:text first
+    let l:m = matchlist(l:line, '\v^(.+):(\d+):(\d+):(.*)$')
+    if !empty(l:m)
+      call add(l:results, {
+        \ 'file': l:m[1], 'lnum': str2nr(l:m[2]),
+        \ 'col': str2nr(l:m[3]), 'text': trim(l:m[4]),
+        \ })
+      continue
+    endif
+    " Try file:line:text (no column)
+    let l:m = matchlist(l:line, '\v^(.+):(\d+):(.*)$')
+    if !empty(l:m)
+      call add(l:results, {
+        \ 'file': l:m[1], 'lnum': str2nr(l:m[2]),
+        \ 'col': 0, 'text': trim(l:m[3]),
+        \ })
+      continue
+    endif
+    " Skip non-matching lines (header, summary, etc.)
+  endfor
+  return l:results
+endfunction
+
+" Parse JSON output — try full blob first, then per-line.
+function! s:parse_json(lines) abort
+  let l:blob = join(a:lines, "\n")
+  try
+    return json_decode(l:blob)
+  catch
+  endtry
+  " Fall back to per-line JSON (JSONL)
+  let l:results = []
+  for l:line in a:lines
+    if empty(trim(l:line)) | continue | endif
+    try
+      call add(l:results, json_decode(l:line))
+    catch
+    endtry
+  endfor
+  return l:results
 endfunction
 
 "==============================================================================
