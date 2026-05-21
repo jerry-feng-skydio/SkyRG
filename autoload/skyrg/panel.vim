@@ -158,6 +158,11 @@ function! skyrg#panel#open(...) abort
     autocmd!
     autocmd VimResized * call skyrg#panel#reposition_popups()
   augroup END
+  " Auto-run search if a query was pre-loaded (e.g. from history restore)
+  if !empty(s:state.form.fields[l:c.QUERY].value)
+    let s:state._search_dirty = 0
+    call skyrg#panel#search#run()
+  endif
   call skyrg#log#elapsed(l:open_timer, 'panel', 'open complete (5 popups created)')
 endfunction
 
