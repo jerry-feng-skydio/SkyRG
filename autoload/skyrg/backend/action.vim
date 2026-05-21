@@ -142,6 +142,17 @@ function! s:run_job(action, ctx) abort
     \ 'pid': job_info(l:job).process,
     \ })
 
+  " Pipe stdin if specified
+  if has_key(l:opts, 'stdin')
+    let l:stdin = s:resolve_stdin(l:opts.stdin, a:ctx)
+    if !empty(l:stdin)
+      let l:ch = job_getchannel(l:job)
+      call ch_sendraw(l:ch, l:stdin)
+      call ch_close_in(l:ch)
+      call skyrg#log#info('action', 'piped stdin to #%d (%d bytes)', l:task_id, len(l:stdin))
+    endif
+  endif
+
   echom printf('[SkyRG] Started: %s', l:title)
 endfunction
 
@@ -466,4 +477,18 @@ function! s:resolve_cmd(cmd_spec, ctx) abort
   let l:cmd = substitute(l:cmd, '{ctx\.filetype}', shellescape(get(a:ctx, 'filetype', '')), 'g')
   let l:cmd = substitute(l:cmd, '{ctx\.line}', shellescape(get(a:ctx, 'line', '')), 'g')
   return l:cmd
+endfunction
+
+" Resolve stdin value — funcref, list, or string.
+function! s:resolve_stdin(spec, ctx) abort
+  if type(a:spec) == v:t_func
+    let l:val = a:spec(a:ctx)
+  else
+    let l:val = a:spec
+  endif
+  " List of lines → join with newlines
+  if type(l:val) == v:t_list
+    return join(l:val, "\n") . "\n"
+  endif
+  return l:val
 endfunction
