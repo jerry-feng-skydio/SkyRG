@@ -1,6 +1,6 @@
 # Action System — Architecture Proposal
 
-> **Status**: Proposal  
+> **Status**: Phase 1 implemented (action engine, tasks, logging, dummy script)  
 > **Scope**: External action dispatch, async execution, action logging, user configuration
 
 ## Motivation
