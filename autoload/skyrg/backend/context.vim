@@ -98,6 +98,7 @@ function! s:ensure_builtins() abort
   call skyrg#backend#context#register_all([
     \ {
     \   'name': 'Search word under cursor',
+    \   'label_fn': {ctx -> printf('Search "%s"', ctx.word)},
     \   'key': 'w',
     \   'group': 'search',
     \   'priority': 10,
@@ -106,6 +107,7 @@ function! s:ensure_builtins() abort
     \ },
     \ {
     \   'name': 'Search selection',
+    \   'label_fn': {ctx -> printf('Search "%s"', len(ctx.visual) > 30 ? ctx.visual[:27].'...' : ctx.visual)},
     \   'key': 's',
     \   'group': 'search',
     \   'priority': 11,
@@ -122,6 +124,7 @@ function! s:ensure_builtins() abort
     \ },
     \ {
     \   'name': 'Search word in this directory',
+    \   'label_fn': {ctx -> printf('Search "%s" in %s/', ctx.word, fnamemodify(ctx.dir, ':t'))},
     \   'key': 'D',
     \   'group': 'search',
     \   'priority': 21,
@@ -138,6 +141,7 @@ function! s:ensure_builtins() abort
     \ },
     \ {
     \   'name': 'Search word in this filetype',
+    \   'label_fn': {ctx -> printf('Search "%s" in *.%s', ctx.word, ctx.filetype)},
     \   'key': 'T',
     \   'group': 'search',
     \   'priority': 31,

@@ -42,10 +42,11 @@ function! skyrg#views#context#open(mode) abort
   let l:line = l:pos.row + 1
   let l:col = l:pos.col
 
-  " Determine width from longest action name
+  " Determine width from longest action label
   let l:max_w = 0
   for l:a in s:actions
-    let l:w = len(l:a.name) + 6
+    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(s:ctx) : l:a.name
+    let l:w = len(l:label) + 6
     if l:w > l:max_w | let l:max_w = l:w | endif
   endfor
 
@@ -172,9 +173,10 @@ function! s:render() abort
       call add(l:lines, {'text': ''})
     endif
     let l:prev_group = l:group
-    " Format: [key] Action name
+    " Format: [key] Action name (label_fn overrides static name)
     let l:key_str = has_key(l:a, 'key') ? '['.l:a.key.'] ' : '    '
-    let l:text = '  ' . l:key_str . l:a.name
+    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(s:ctx) : l:a.name
+    let l:text = '  ' . l:key_str . l:label
     if l:i == s:selected
       call add(l:lines, skyrg#ui#util#hl_line(l:text, 'skyrg_sel'))
     else
