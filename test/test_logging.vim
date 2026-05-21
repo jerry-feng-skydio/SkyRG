@@ -145,3 +145,64 @@ function! s:test_log_status_compat()
   call s:teardown()
 endfunction
 call s:test_log_status_compat()
+
+function! s:test_log_timer_and_elapsed()
+  call s:setup()
+  let l:t = skyrg#log#timer()
+  " Do a tiny bit of work
+  let l:x = 0
+  for l:i in range(100)
+    let l:x += l:i
+  endfor
+  call skyrg#log#elapsed(l:t, 'test', 'timer work')
+  let l:lines = s:read_log()
+  call Assert(l:lines[-1] =~# 'timer work', 'log timer: contains message')
+  call Assert(l:lines[-1] =~# 'ms)', 'log timer: contains ms unit')
+  call Assert(l:lines[-1] =~# '\[INFO\]', 'log timer: elapsed logs at INFO')
+  call s:teardown()
+endfunction
+call s:test_log_timer_and_elapsed()
+
+function! s:test_log_elapsed_debug()
+  call s:setup()
+  let l:t = skyrg#log#timer()
+  call skyrg#log#elapsed_debug(l:t, 'test', 'debug timing')
+  let l:lines = s:read_log()
+  call Assert(l:lines[-1] =~# 'debug timing', 'log elapsed_debug: contains message')
+  call Assert(l:lines[-1] =~# '\[DEBUG\]', 'log elapsed_debug: logs at DEBUG')
+  call s:teardown()
+endfunction
+call s:test_log_elapsed_debug()
+
+function! s:test_log_elapsed_ms()
+  call s:setup()
+  let l:t = skyrg#log#timer()
+  let l:ms = skyrg#log#elapsed_ms(l:t)
+  call Assert(type(l:ms) == v:t_float, 'log elapsed_ms: returns float')
+  call Assert(l:ms >= 0.0, 'log elapsed_ms: non-negative')
+  call s:teardown()
+endfunction
+call s:test_log_elapsed_ms()
+
+function! s:test_log_elapsed_with_printf_args()
+  call s:setup()
+  let l:t = skyrg#log#timer()
+  call skyrg#log#elapsed(l:t, 'test', 'done n=%d name=%s', 42, 'hello')
+  let l:lines = s:read_log()
+  call Assert(l:lines[-1] =~# 'done n=42 name=hello', 'log elapsed printf: formatted correctly')
+  call s:teardown()
+endfunction
+call s:test_log_elapsed_with_printf_args()
+
+function! s:test_log_elapsed_level_filtering()
+  call s:setup()
+  let g:skyrg_log_level = 'ERROR'
+  let l:t = skyrg#log#timer()
+  call skyrg#log#elapsed(l:t, 'test', 'should not appear')
+  call skyrg#log#elapsed_debug(l:t, 'test', 'also not')
+  let l:lines = s:read_log()
+  let l:content = filter(copy(l:lines), {_, l -> l !~# '^---'})
+  call AssertEqual(0, len(l:content), 'log elapsed filter: nothing logged at ERROR level')
+  call s:teardown()
+endfunction
+call s:test_log_elapsed_level_filtering()

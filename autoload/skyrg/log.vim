@@ -56,6 +56,46 @@ function! skyrg#log#status(msg, ...) abort
 endfunction
 
 "==============================================================================
+" Timing traces
+"==============================================================================
+
+" Start a timer. Returns an opaque value to pass to elapsed().
+function! skyrg#log#timer() abort
+  return reltime()
+endfunction
+
+" Log elapsed time since timer was started.
+" Automatically picks ms or s formatting. Logs at INFO level.
+"   let t = skyrg#log#timer()
+"   ... slow work ...
+"   call skyrg#log#elapsed(t, 'module', 'description')
+function! skyrg#log#elapsed(timer, src, msg, ...) abort
+  if !s:should_log('INFO') | return | endif
+  let l:ms = s:elapsed_ms(a:timer)
+  let l:text = empty(a:000) ? a:msg : call('printf', [a:msg] + a:000)
+  let l:fmt = l:ms >= 1000.0
+    \ ? printf('%s (%.2fs)', l:text, l:ms / 1000.0)
+    \ : printf('%s (%.1fms)', l:text, l:ms)
+  call s:log('INFO', a:src, l:fmt, [])
+endfunction
+
+" Log elapsed time at DEBUG level (for less critical timings).
+function! skyrg#log#elapsed_debug(timer, src, msg, ...) abort
+  if !s:should_log('DEBUG') | return | endif
+  let l:ms = s:elapsed_ms(a:timer)
+  let l:text = empty(a:000) ? a:msg : call('printf', [a:msg] + a:000)
+  let l:fmt = l:ms >= 1000.0
+    \ ? printf('%s (%.2fs)', l:text, l:ms / 1000.0)
+    \ : printf('%s (%.1fms)', l:text, l:ms)
+  call s:log('DEBUG', a:src, l:fmt, [])
+endfunction
+
+" Return elapsed milliseconds as a float (for programmatic use).
+function! skyrg#log#elapsed_ms(timer) abort
+  return s:elapsed_ms(a:timer)
+endfunction
+
+"==============================================================================
 " Log file management
 "==============================================================================
 
@@ -112,6 +152,11 @@ endfunction
 
 function! s:echo_enabled() abort
   return get(g:, 'skyrg_log_echo', 0)
+endfunction
+
+function! s:elapsed_ms(timer) abort
+  let l:elapsed = reltime(a:timer)
+  return str2float(reltimestr(l:elapsed)) * 1000.0
 endfunction
 
 function! s:timestamp() abort

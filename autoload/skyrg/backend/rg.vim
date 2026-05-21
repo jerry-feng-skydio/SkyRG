@@ -48,6 +48,7 @@ function! skyrg#backend#rg#new() abort
     endif
 
     let l:cmd = s:build_cmd(a:params)
+    let self._timer = skyrg#log#timer()
     call skyrg#log#info('backend/rg', 'run gen=%d query="%s"', self._gen, l:query)
     call skyrg#log#debug('backend/rg', 'cmd: %s', join(l:cmd, ' '))
     let l:gen = self._gen
@@ -168,7 +169,12 @@ endfunction
 
 function! s:on_done(be, gen, ch) abort
   if a:gen != a:be._gen | return | endif
-  call skyrg#log#info('backend/rg', 'done gen=%d results=%d', a:gen, len(a:be._pending))
+  if has_key(a:be, '_timer') && !empty(a:be._timer)
+    call skyrg#log#elapsed(a:be._timer, 'backend/rg', 'done gen=%d results=%d', a:gen, len(a:be._pending))
+    let a:be._timer = []
+  else
+    call skyrg#log#info('backend/rg', 'done gen=%d results=%d', a:gen, len(a:be._pending))
+  endif
   if has_key(a:be._cbs, 'on_done')
     call a:be._cbs.on_done(a:be._pending)
   endif

@@ -67,6 +67,7 @@ endfunction
 "==============================================================================
 " Each node: {'path': abs_path, 'depth': int, 'is_dir': bool, 'name': str}
 function! s:rebuild() abort
+  let l:timer = skyrg#log#timer()
   let l:t = skyrg#panel#state().tree
   let l:root = getcwd()
   let l:t.nodes = []
@@ -74,6 +75,7 @@ function! s:rebuild() abort
   if l:t.idx >= len(l:t.nodes)
     let l:t.idx = max([0, len(l:t.nodes) - 1])
   endif
+  call skyrg#log#elapsed_debug(l:timer, 'tree', 'rebuild %d nodes', len(l:t.nodes))
   call skyrg#panel#tree#redraw()
 endfunction
 

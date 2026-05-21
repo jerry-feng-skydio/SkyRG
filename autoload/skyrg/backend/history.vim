@@ -93,6 +93,7 @@ endfunction
 
 " Load all history entries for the current project, newest first.
 function! skyrg#backend#history#load_all(...) abort
+  let l:t = skyrg#log#timer()
   let l:root = a:0 > 0 ? a:1 : skyrg#backend#history#project_root()
   let l:file = s:history_file(l:root)
   if !filereadable(l:file)
@@ -110,7 +111,7 @@ function! skyrg#backend#history#load_all(...) abort
   endfor
   " Newest first
   call reverse(l:entries)
-  call skyrg#log#debug('history', 'load_all entries=%d', len(l:entries))
+  call skyrg#log#elapsed_debug(l:t, 'history', 'load_all entries=%d', len(l:entries))
   " Compact if over threshold
   if len(l:entries) > s:MAX_ENTRIES
     call s:compact(l:root, l:entries)

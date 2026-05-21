@@ -201,9 +201,11 @@ function! s:get_cached_or_compute(file, match_line) abort
     return l:s._syn_cache[a:file]
   endif
   " Compute and cache
+  let l:t = skyrg#log#timer()
   let l:all = readfile(a:file)
   let l:spans = s:get_syntax_spans(a:file, 1, len(l:all))
   let l:s._syn_cache[a:file] = l:spans
+  call skyrg#log#elapsed_debug(l:t, 'preview', 'syntax compute %s (%d lines)', a:file, len(l:all))
   return l:spans
 endfunction
 
@@ -241,9 +243,12 @@ function! s:batch_step(timer) abort
   if has_key(l:s._syn_cache, l:file) || !filereadable(l:file)
     return
   endif
+  let l:t = skyrg#log#timer()
   let l:all = readfile(l:file)
   let l:spans = s:get_syntax_spans(l:file, 1, len(l:all))
   let l:s._syn_cache[l:file] = l:spans
+  call skyrg#log#elapsed_debug(l:t, 'preview', 'batch syntax %s (%d lines, %d queued)',
+    \ l:file, len(l:all), len(s:batch_queue))
   " Refresh preview if this is the currently-displayed file
   let l:r = l:s.results
   if !empty(l:r.matches) && l:r.matches[l:r.idx].file ==# l:file

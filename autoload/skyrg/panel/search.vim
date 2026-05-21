@@ -9,6 +9,7 @@
 
 let s:SEARCH_DELAY = 300
 let s:MAX_RESULTS = 500
+let s:search_timer = []
 
 function! skyrg#panel#search#schedule() abort
   let l:se = skyrg#panel#state().search
@@ -74,6 +75,7 @@ function! skyrg#panel#search#run() abort
     endif
   endif
   if !l:has_dir | call add(l:cmd, '.') | endif
+  let s:search_timer = skyrg#log#timer()
   call skyrg#log#info('search', 'run gen=%d query="%s"', l:se.gen, l:q)
   call skyrg#log#debug('search', 'cmd: %s', join(l:cmd, ' '))
   let l:gen = l:se.gen
@@ -108,7 +110,12 @@ function! s:on_done(gen, ch) abort
   let l:s = skyrg#panel#state()
   let l:se = l:s.search
   if a:gen != l:se.gen | return | endif
-  call skyrg#log#info('search', 'done gen=%d results=%d', a:gen, len(l:se.pending))
+  if !empty(s:search_timer)
+    call skyrg#log#elapsed(s:search_timer, 'search', 'done gen=%d results=%d', a:gen, len(l:se.pending))
+    let s:search_timer = []
+  else
+    call skyrg#log#info('search', 'done gen=%d results=%d', a:gen, len(l:se.pending))
+  endif
   let l:s.results.matches = l:se.pending
   let l:s.results.idx = 0 | let l:s.results.scroll = 0
   call skyrg#panel#preview#reset_mode()

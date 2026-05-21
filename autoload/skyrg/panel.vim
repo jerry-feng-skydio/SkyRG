@@ -93,6 +93,7 @@ function! skyrg#panel#open(...) abort
     return
   endif
   let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
+  let l:open_timer = skyrg#log#timer()
   call skyrg#log#info('panel', 'open mode=search')
   if !empty(l:params)
     call skyrg#log#data('panel', 'open params', l:params)
@@ -145,6 +146,7 @@ function! skyrg#panel#open(...) abort
     autocmd!
     autocmd VimResized * call skyrg#panel#reposition_popups()
   augroup END
+  call skyrg#log#elapsed(l:open_timer, 'panel', 'open complete (5 popups created)')
 endfunction
 
 "==============================================================================
@@ -348,6 +350,7 @@ endfunction
 
 function! s:reposition_popups() abort
   if s:state.closing | return | endif
+  let l:reposition_timer = skyrg#log#timer()
   let l:g = s:layout().geo
   if s:state.popups.form
     call skyrg#panel#popup#move(s:state.popups.form, l:g.form)
@@ -364,6 +367,7 @@ function! s:reposition_popups() abort
   if s:state.popups.form | call skyrg#panel#form#redraw() | endif
   call skyrg#panel#results#redraw()
   call skyrg#panel#preview#update()
+  call skyrg#log#elapsed_debug(l:reposition_timer, 'panel', 'reposition complete')
 endfunction
 
 "==============================================================================
