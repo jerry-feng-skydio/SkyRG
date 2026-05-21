@@ -264,6 +264,7 @@ panel creation.
 | `:SkyRG [args]` | Open the search panel (see Quick Start) |
 | `:SkyRGHistory` | Browse past searches |
 | `:SkyRGTasks` | View active/recent tasks with live output |
+| `:SkyRGFollowup` | Open followup popup for most recent awaiting task |
 | `:SkyRGActionLog` | Open most recent task log in a split |
 | `:SkyRGLog` | Open the SkyRG event log |
 | `:SkyRGLogClear` | Clear the event log |
@@ -333,19 +334,51 @@ let g:skyrg_context_actions = [
 ## Job action (async, for long-running tasks)
 
 ```vim
-let g:skyrg_context_actions = [
-  \ {
-  \   'name':    'Example: echo word',
-  \   'key':     'e',
-  \   'group':   'example',
-  \   'priority': 200,
-  \   'job':     {ctx -> '~/.dotfiles/scripts/skyrg_example_action.sh ' . shellescape(ctx.word)},
-  \   'job_opts': {
-  \     'title':  'Echo example',
-  \     'notify': 1,
-  \   },
+call add(g:skyrg_context_actions, {
+  \ 'name':    'Build project',
+  \ 'key':     'b',
+  \ 'job':     {ctx -> 'make -C ' . shellescape(ctx.dir)},
+  \ 'job_opts': {
+  \   'title':         'Build',
+  \   'output_format': 'matches',
+  \   'on_failure': [{
+  \     'name': 'Jump to first error',
+  \     'key':  'j',
+  \     'execute': {ctx -> s:jump_to_match(ctx.task_output[0])},
+  \   }],
   \ },
-  \ ]
+  \ })
+```
+
+## Stdin piping (pipe selection to external tool)
+
+```vim
+call add(g:skyrg_context_actions, {
+  \ 'name':      'Analyze selection',
+  \ 'key':       'a',
+  \ 'predicate': {ctx -> !empty(ctx.visual)},
+  \ 'job':       'my-tool --analyze',
+  \ 'job_opts':  {
+  \   'title': 'Analyze',
+  \   'stdin': {ctx -> ctx.visual},
+  \   'output_format': 'lines',
+  \ },
+  \ })
+```
+
+## Interactive action (opens terminal split)
+
+```vim
+call add(g:skyrg_context_actions, {
+  \ 'name': 'Deploy (interactive)',
+  \ 'key':  'd',
+  \ 'job':  'deploy.sh --confirm',
+  \ 'job_opts': {
+  \   'title':       'Deploy',
+  \   'interactive': 1,
+  \   'term_rows':   10,
+  \ },
+  \ })
 ```
 
 ## Action shape reference
@@ -371,6 +404,10 @@ let g:skyrg_context_actions = [
 | `cwd` | project root | Working directory |
 | `env` | `{}` | Extra environment variables |
 | `notify` | `1` | Show completion notification |
+| `output_format` | `'none'` | Parse stdout: `'matches'`, `'json'`, `'lines'`, `'none'` |
+| `stdin` | — | Pipe to stdin: string, list, or `{ctx -> ...}` |
+| `interactive` | `0` | Open in terminal split instead of background |
+| `term_rows` | `min(lines/3, 15)` | Terminal split height (interactive mode) |
 | `on_success` | `[]` | Followup actions on exit 0 |
 | `on_failure` | `[]` | Followup actions on non-zero exit |
 
@@ -413,9 +450,10 @@ set statusline+=%{skyrg#backend#tasks#statusline()}
 ```
 
 This shows:
-- `⟳ Build firmware (12s)` while running
-- `✓ Build firmware` for 5s after success
-- `✗ Build firmware` for 5s after failure
+- `⟳ Build firmware (12s)` — while running
+- `❗Build firmware (<Leader>f)` — awaiting followup
+- `✓ Build firmware` — for 5s after success
+- `✗ Build firmware` — for 5s after failure
 - Empty when idle (zero visual cost)
 
 ## Task viewer (`:SkyRGTasks`)
@@ -437,24 +475,60 @@ Opens a two-pane popup showing all active/recent tasks with live output:
 └─────────────────────────────────────────────┘
 ```
 
-Keys: `j`/`k` navigate, `Enter` open full log, `c` cancel, `q` close.
+Keys: `j`/`k` navigate, `Enter` open full log, `c` cancel, `f` open
+followups, `d` dismiss followups, `q` close.
 
 ## Followup actions
 
-If an action defines `on_success` or `on_failure`, a small popup appears
-when the task completes offering next steps:
+If an action defines `on_success` or `on_failure`, the task enters an
+**awaiting** state after completion instead of showing an immediate popup.
+You access followups on your own terms:
+
+- **Statusline**: shows `❗Task name (<Leader>f)` when a task awaits followup
+- **Task viewer**: `❗` icon on awaiting tasks — press `f` to open, `d` to dismiss
+- **Global shortcut**: `<Leader>f` (or `:SkyRGFollowup`) opens the most recent
+
+The followup popup supports both letter shortcuts and `j`/`k`/`Enter` navigation.
+Built-in options `[l] View log` and `[d] Dismiss` are always appended.
+
+### Followup context
+
+Followup actions receive an enriched context with task results:
+
+| Key | Description |
+|---|---|
+| `task_id` | Task ID |
+| `task_title` | Task display name |
+| `task_exit` | Exit code |
+| `task_stdout` | Raw stdout lines (list) |
+| `task_stderr` | Raw stderr lines (list) |
+| `task_output` | Parsed output (from `output_format`) |
+| `task_log` | Path to log file |
+
+### Output formats
+
+| Format | `task_output` shape |
+|---|---|
+| `'matches'` | `[{'file': ..., 'lnum': N, 'col': N, 'text': ...}, ...]` |
+| `'json'` | Decoded JSON (object, array, or list of JSONL objects) |
+| `'lines'` | `['line1', 'line2', ...]` (non-empty lines) |
+| `'none'` | `[]` (default) |
+
+### Example
+
 ```vim
 'job_opts': {
+  'output_format': 'matches',
+  'on_failure': [{
+    'name': 'Jump to first error',
+    'key':  'j',
+    'execute': {ctx -> s:goto_match(ctx.task_output[0])},
+  }],
   'on_success': [{
-    'name': 'Deploy to drone',
+    'name': 'Deploy',
     'key':  'd',
     'job':  'deploy.sh',
     'job_opts': {'title': 'Deploy'},
-  }],
-  'on_failure': [{
-    'name': 'View errors',
-    'key':  'e',
-    'execute': {ctx -> execute('split ' . ctx.task_log)},
   }],
 }
 ```

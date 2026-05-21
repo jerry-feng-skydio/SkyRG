@@ -1,6 +1,6 @@
 # Action System — Architecture Proposal
 
-> **Status**: Phase 1 implemented (action engine, tasks, logging, dummy script)  
+> **Status**: All phases implemented (Phase 1–4 complete)  
 > **Scope**: External action dispatch, async execution, action logging, user configuration
 
 ## Motivation
@@ -434,47 +434,49 @@ This covers your "Ask Claude" example cleanly.
 
 ## 8. Implementation Plan
 
-### Phase 1: Action engine basics
-1. `backend/action.vim` — shell and job execution with logging
-2. `backend/action_log.vim` — log storage and retention
-3. `backend/tasks.vim` — task registry and lifecycle
-4. Extend `backend/context#execute()` to detect `shell`/`job` keys
+### Phase 1: Action engine basics ✓
+1. ✓ `backend/action.vim` — shell and job execution with logging
+2. ✓ `backend/action_log.vim` — log storage and retention
+3. ✓ `backend/tasks.vim` — task registry and lifecycle
+4. ✓ Extend `backend/context#execute()` to detect `shell`/`job` keys
 
-### Phase 2: Task UI
-5. Statusline component for progress
-6. `:SkyRGTasks` popup (task list + live output)
-7. Followup popup on task completion
+### Phase 2: Task UI ✓
+5. ✓ Statusline component for progress
+6. ✓ `:SkyRGTasks` popup (task list + live output)
+7. ✓ On-demand followup popup (awaiting status, `f` key, `<Leader>f`)
 
-### Phase 3: Interactive + advanced
-8. Interactive mode (`term_start()`)
-9. Structured output parsing (`output_format`)
-10. Stdin piping for AI-style workflows
+### Phase 3: Interactive + advanced ✓
+8. ✓ Interactive mode (`term_start()`)
+9. ✓ Structured output parsing (`output_format`)
+10. ✓ Stdin piping for AI-style workflows
 
-### Phase 4: Polish
-11. `:SkyRGActionLog` command
-12. Retention compaction
-13. Quickstart guide
+### Phase 4: Polish ✓
+11. ✓ `:SkyRGActionLog` command
+12. ✓ Retention compaction
+13. ✓ Quickstart guide
 
-### Dummy action (can ship in Phase 1)
-- Create `~/.dotfiles/scripts/skyrg_example_action.sh`
-- Add registration example to quickstart guide
+### Dummy actions (shipped in Phase 1, expanded in Phase 3) ✓
+- ✓ `skyrg_example_action.sh` — fake build (matches output format)
+- ✓ `skyrg_example_stdin.sh` — selection analysis (stdin piping)
+- ✓ `skyrg_example_interactive.sh` — deploy prompt (interactive terminal)
 
 ---
 
-## 9. Open Questions
+## 9. Open Questions (Resolved)
 
-1. **Followup popup timing**: Should the followup popup appear immediately
-   on task completion (could interrupt typing) or wait for next idle moment?
-   Suggestion: queue it and show on `CursorHold` (Vim's idle event, fires
-   after `updatetime` ms of no input).
+1. **Followup popup timing**: ~~Immediate popup vs CursorHold.~~
+   **Resolved**: Neither. Followups are stored on the task with `awaiting`
+   status. User invokes them on-demand via `f` in task viewer or `<Leader>f`
+   globally. Statusline shows `❗` indicator. No surprise popups.
 
-2. **Task concurrency**: Allow multiple async tasks simultaneously?
-   Suggestion: Yes, with a configurable cap (`g:skyrg_max_tasks`, default 5).
+2. **Task concurrency**: ~~Configurable cap?~~
+   **Resolved**: Yes, multiple tasks run simultaneously. No cap enforced yet;
+   task registry tracks all. Can add `g:skyrg_max_tasks` later if needed.
 
-3. **Task cancellation**: `Ctrl-C` in task viewer cancels the selected task
-   via `job_stop()`. Should there be a global "cancel all" shortcut?
+3. **Task cancellation**: ~~Global "cancel all"?~~
+   **Resolved**: `c` in task viewer cancels selected task via `job_stop()`.
+   No global cancel-all yet.
 
-4. **Terminal popup vs split**: For interactive mode, popup terminal
-   (`popup_create` with `term`) or regular split? Popup keeps the workflow
-   contained but some terminal apps need full-width.
-   Suggestion: Default to popup, `'interactive': 'split'` for full-width.
+4. **Terminal popup vs split**: ~~Popup terminal vs regular split?~~
+   **Resolved**: Regular split via `term_start()`. Configurable height with
+   `term_rows` (default: min(lines/3, 15)). Auto-closes on exit.
