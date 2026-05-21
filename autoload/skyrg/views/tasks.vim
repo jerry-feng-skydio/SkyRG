@@ -55,6 +55,7 @@ function! skyrg#views#tasks#open() abort
   endif
 
   call s:close_popups()
+  call skyrg#ui#style#init()
   let s:selected = 0
 
   let l:width = min([&columns - 4, 80])
