@@ -155,31 +155,91 @@ endfunction
 
 function! s:render_output() abort
   let l:tasks = skyrg#backend#tasks#all()
-  if empty(l:tasks) || s:selected >= len(l:tasks)
-    return [{'text': '  (select a task)'}]
-  endif
-  let l:t = l:tasks[s:selected]
-  let l:title = l:t.title
-  let l:lines = []
-  " Interleave stdout and stderr (show last 50 lines)
-  let l:combined = []
-  for l:l in l:t.stdout[-50:]
-    call add(l:combined, {'text': '  ' . l:l})
-  endfor
-  if !empty(l:t.stderr)
-    call add(l:combined, {'text': ''})
-    for l:l in l:t.stderr[-20:]
-      call add(l:combined, {'text': '  ' . l:l, 'props': [{'col': 3, 'length': len(l:l), 'type': 'skyrg_dim'}]})
+
+  " In-memory task available
+  if !empty(l:tasks) && s:selected < len(l:tasks)
+    let l:t = l:tasks[s:selected]
+    let l:title = l:t.title
+    let l:combined = []
+    for l:l in l:t.stdout[-50:]
+      call add(l:combined, {'text': '  ' . l:l})
     endfor
-  endif
-  if empty(l:combined)
+    if !empty(l:t.stderr)
+      call add(l:combined, {'text': ''})
+      for l:l in l:t.stderr[-20:]
+        call add(l:combined, {'text': '  ' . l:l, 'props': [{'col': 3, 'length': len(l:l), 'type': 'skyrg_dim'}]})
+      endfor
+    endif
+    if !empty(l:combined)
+      call s:set_output_title(l:title)
+      return l:combined
+    endif
+    " Task exists but no output buffered — try reading log file from disk
+    let l:log = get(l:t, 'log_file', '')
+    if !empty(l:log)
+      let l:from_disk = s:read_log_output(l:log)
+      if !empty(l:from_disk)
+        call s:set_output_title(l:title)
+        return l:from_disk
+      endif
+    endif
+    call s:set_output_title(l:title)
     return [{'text': '  (no output yet)'}]
   endif
 
-  if s:popup_output
-    call popup_setoptions(s:popup_output, {'title': ' Output: ' . l:title . ' '})
+  " Fall back to log index entries (previous session tasks)
+  let l:entries = skyrg#backend#action_log#list()
+  if !empty(l:entries) && s:selected < len(l:entries)
+    let l:e = l:entries[s:selected]
+    let l:title = get(l:e, 'title', '?')
+    let l:path = skyrg#backend#action_log#path(l:e)
+    if !empty(l:path)
+      let l:from_disk = s:read_log_output(l:path)
+      if !empty(l:from_disk)
+        call s:set_output_title(l:title)
+        return l:from_disk
+      endif
+    endif
+    call s:set_output_title(l:title)
+    return [{'text': '  (log file not found)'}]
   endif
-  return l:combined
+
+  return [{'text': '  (select a task)'}]
+endfunction
+
+" Read a task log file and return popup-formatted output lines.
+function! s:read_log_output(path) abort
+  if !filereadable(a:path) | return [] | endif
+  let l:raw = readfile(a:path)
+  let l:combined = []
+  let l:in_header = 1
+  for l:line in l:raw
+    " Skip the header block (everything before the first blank line after ===)
+    if l:in_header
+      if l:line =~# '^=\+$' && !empty(l:combined)
+        let l:in_header = 0
+        let l:combined = []
+      endif
+      continue
+    endif
+    " Skip footer
+    if l:line =~# '^=\+$'
+      break
+    endif
+    if l:line =~# '^\[stderr\]'
+      call add(l:combined, {'text': '  ' . l:line, 'props': [{'col': 3, 'length': len(l:line), 'type': 'skyrg_dim'}]})
+    else
+      call add(l:combined, {'text': '  ' . substitute(l:line, '^\[stdout\] ', '', '')})
+    endif
+  endfor
+  " Cap at last 70 lines
+  return l:combined[-70:]
+endfunction
+
+function! s:set_output_title(title) abort
+  if s:popup_output
+    call popup_setoptions(s:popup_output, {'title': ' Output: ' . a:title . ' '})
+  endif
 endfunction
 
 function! s:status_icon(status) abort
@@ -203,8 +263,7 @@ endfunction
 "==============================================================================
 
 function! s:on_key(winid, key) abort
-  let l:tasks = skyrg#backend#tasks#all()
-  let l:count = len(l:tasks)
+  let l:count = s:item_count()
 
   if a:key ==# "\<Esc>" || a:key ==# 'q'
     call s:close_popups()
@@ -224,20 +283,18 @@ function! s:on_key(winid, key) abort
 
   " Enter: open full log
   if a:key ==# "\<CR>"
-    if s:selected < l:count
-      let l:t = l:tasks[s:selected]
-      let l:log = get(l:t, 'log_file', '')
-      if !empty(l:log) && filereadable(l:log)
-        call s:close_popups()
-        execute 'split' fnameescape(l:log)
-      endif
+    let l:log = s:selected_log_path()
+    if !empty(l:log) && filereadable(l:log)
+      call s:close_popups()
+      execute 'split' fnameescape(l:log)
     endif
     return 1
   endif
 
   " c: cancel running task
   if a:key ==# 'c'
-    if s:selected < l:count
+    let l:tasks = skyrg#backend#tasks#all()
+    if s:selected < len(l:tasks)
       let l:t = l:tasks[s:selected]
       if l:t.status ==# 'running' && has_key(l:t, 'job')
         call job_stop(l:t.job)
@@ -249,6 +306,26 @@ function! s:on_key(winid, key) abort
   endif
 
   return 1
+endfunction
+
+" Return the total number of items (in-memory tasks or log entries).
+function! s:item_count() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if !empty(l:tasks) | return len(l:tasks) | endif
+  return len(skyrg#backend#action_log#list())
+endfunction
+
+" Return the log file path for the currently selected item.
+function! s:selected_log_path() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if !empty(l:tasks) && s:selected < len(l:tasks)
+    return get(l:tasks[s:selected], 'log_file', '')
+  endif
+  let l:entries = skyrg#backend#action_log#list()
+  if !empty(l:entries) && s:selected < len(l:entries)
+    return skyrg#backend#action_log#path(l:entries[s:selected])
+  endif
+  return ''
 endfunction
 
 function! s:on_close(id, result) abort
