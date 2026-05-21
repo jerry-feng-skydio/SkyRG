@@ -36,6 +36,8 @@ function! skyrg#panel#results#jump() abort
   let l:r = skyrg#panel#state().results
   if empty(l:r.matches) | return | endif
   let l:m = l:r.matches[l:r.idx]
+  " Commit query to history before closing
+  call skyrg#views#search#commit_to_history(len(l:r.matches))
   call skyrg#panel#close()
   execute 'edit +'.l:m.line.' '.fnameescape(l:m.file)
   call cursor(l:m.line, l:m.col)

@@ -39,6 +39,9 @@ let s:defaults = {
   \ 'query_complete_rev': ["\<S-Tab>"],
   \ 'query_jump_letter':  ["\<C-S-Left>"],
   \ 'query_jump_letter_r': ["\<C-S-Right>"],
+  \ 'query_history_prev': ["\<PageUp>"],
+  \ 'query_history_next': ["\<PageDown>"],
+  \ 'query_clear_all':    ["\<C-BS>"],
   \
   \ 'tree_to_query':      ["\<C-Right>"],
   \ 'tree_up':            ["\<Up>"],

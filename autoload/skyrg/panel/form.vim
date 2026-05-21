@@ -55,6 +55,7 @@ function! skyrg#panel#form#on_key(key) abort
       if get(l:s, '_search_dirty', 1)
         let l:s._search_dirty = 0
         call skyrg#panel#search#run()
+        call skyrg#views#search#commit_to_history()
       elseif !empty(l:s.results.matches)
         call skyrg#panel#set_pane(l:c.PANE_RESULTS)
       endif

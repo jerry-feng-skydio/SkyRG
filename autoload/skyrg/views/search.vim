@@ -24,9 +24,21 @@
 " Open
 "==============================================================================
 
+" History navigation state (PageUp/PageDown through past queries)
+let s:hist_nav = {'entries': [], 'nav_idx': -1, 'saved_query': {}}
+
 function! skyrg#views#search#open(...) abort
   let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
+  " Auto-restore last query if no explicit params given
+  if empty(l:params) && get(g:, 'skyrg_restore_last', 1)
+    let l:last = skyrg#backend#history#load_last()
+    if !empty(l:last)
+      let l:params = l:last
+    endif
+  endif
   call skyrg#panel#open(l:params)
+  " Reset history navigation state
+  let s:hist_nav = {'entries': [], 'nav_idx': -1, 'saved_query': {}}
 endfunction
 
 "==============================================================================
@@ -96,4 +108,91 @@ endfunction
 
 function! skyrg#views#search#browse(matches, title) abort
   call skyrg#panel#browse(a:matches, a:title)
+endfunction
+
+"==============================================================================
+" History commit (called when user executes a search or jumps to a match)
+"==============================================================================
+
+function! skyrg#views#search#commit_to_history(...) abort
+  let l:q = skyrg#views#search#get_query()
+  if empty(get(l:q, 'query', ''))
+    return
+  endif
+  let l:entry = copy(l:q)
+  let l:entry.timestamp = localtime()
+  if a:0 > 0
+    let l:entry.result_count = a:1
+  endif
+  call skyrg#backend#history#save(l:entry)
+endfunction
+
+"==============================================================================
+" History navigation (PageUp/PageDown in the form pane)
+"==============================================================================
+
+" Navigate backward through history (older queries).
+function! skyrg#views#search#history_prev() abort
+  call s:ensure_hist_entries()
+  if empty(s:hist_nav.entries) | return | endif
+
+  if s:hist_nav.nav_idx == -1
+    " First PageUp: snapshot current query, load most recent history entry
+    let s:hist_nav.saved_query = skyrg#views#search#get_query()
+    let s:hist_nav.nav_idx = 0
+  elseif s:hist_nav.nav_idx < len(s:hist_nav.entries) - 1
+    let s:hist_nav.nav_idx += 1
+  else
+    return
+  endif
+  call skyrg#views#search#load_query(s:hist_nav.entries[s:hist_nav.nav_idx])
+endfunction
+
+" Navigate forward through history (newer queries / back to current).
+function! skyrg#views#search#history_next() abort
+  if s:hist_nav.nav_idx < 0 | return | endif
+
+  if s:hist_nav.nav_idx > 0
+    let s:hist_nav.nav_idx -= 1
+    call skyrg#views#search#load_query(s:hist_nav.entries[s:hist_nav.nav_idx])
+  else
+    " Back to the original (pre-navigation) query
+    let s:hist_nav.nav_idx = -1
+    call skyrg#views#search#load_query(s:hist_nav.saved_query)
+  endif
+endfunction
+
+" Reset navigation state (called when user edits a field manually).
+function! skyrg#views#search#history_nav_reset() abort
+  let s:hist_nav.nav_idx = -1
+  let s:hist_nav.saved_query = {}
+endfunction
+
+" Lazy-load history entries on first navigation.
+function! s:ensure_hist_entries() abort
+  if !empty(s:hist_nav.entries) | return | endif
+  let s:hist_nav.entries = skyrg#backend#history#load_all()
+endfunction
+
+"==============================================================================
+" Clear all fields (Ctrl+Backspace in form pane)
+"==============================================================================
+
+function! skyrg#views#search#clear_all() abort
+  try
+    let l:s = skyrg#panel#state()
+  catch
+    return
+  endtry
+  let l:c = skyrg#panel#const()
+  for l:i in range(l:c.NFIELDS)
+    if l:i == l:c.GITIGN
+      let l:s.form.fields[l:i].value = 'on'
+    else
+      let l:s.form.fields[l:i].value = ''
+    endif
+    let l:s.form.fields[l:i].pos = 0
+  endfor
+  let l:s._search_dirty = 1
+  call skyrg#panel#form#redraw()
 endfunction

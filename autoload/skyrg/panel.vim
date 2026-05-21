@@ -423,6 +423,22 @@ function! s:on_key_query(key, K) abort
     return 1
   endif
 
+  " PageUp/PageDown: history navigation
+  if a:K(a:key, 'query_history_prev')
+    call skyrg#views#search#history_prev()
+    return 1
+  endif
+  if a:K(a:key, 'query_history_next')
+    call skyrg#views#search#history_next()
+    return 1
+  endif
+
+  " Ctrl+Backspace: clear all fields
+  if a:K(a:key, 'query_clear_all')
+    call skyrg#views#search#clear_all()
+    return 1
+  endif
+
   " Delegate remaining keys to form handler
   return skyrg#panel#form#on_key(a:key)
 endfunction
