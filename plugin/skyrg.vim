@@ -16,7 +16,7 @@ endif
 call skyrg#filter#init()
 let s:plugin_dir = expand('<sfile>:p:h:h')
 let s:commit = 'unknown'
-if isdirectory(s:plugin_dir . '/.git')
+if isdirectory(s:plugin_dir . '/.git') || filereadable(s:plugin_dir . '/.git')
   let s:commit = trim(system('git -C ' . shellescape(s:plugin_dir) . ' rev-parse --short HEAD'))
   if v:shell_error | let s:commit = 'unknown' | endif
 endif

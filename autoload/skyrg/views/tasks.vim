@@ -162,17 +162,30 @@ function! s:render_output() abort
   if !empty(l:tasks) && s:selected < len(l:tasks)
     let l:t = l:tasks[s:selected]
     let l:title = l:t.title
-    call skyrg#log#debug('views/tasks', 'render_output: task=%s status=%s stdout=%d stderr=%d log=%s',
-      \ l:title, l:t.status, len(l:t.stdout), len(l:t.stderr), get(l:t, 'log_file', 'none'))
+    let l:stdout_ref = l:t.stdout
+    let l:stderr_ref = l:t.stderr
+    call skyrg#log#debug('views/tasks',
+      \ 'render_output: task=%s status=%s stdout=%d stderr=%d type=%s first=%s log=%s',
+      \ l:title, l:t.status, len(l:stdout_ref), len(l:stderr_ref),
+      \ type(l:stdout_ref),
+      \ len(l:stdout_ref) > 0 ? string(l:stdout_ref[0]) : 'EMPTY',
+      \ get(l:t, 'log_file', 'none'))
     let l:combined = []
-    for l:l in l:t.stdout[-50:]
-      call add(l:combined, {'text': '  ' . l:l})
-    endfor
-    if !empty(l:t.stderr)
+    let l:start = len(l:stdout_ref) > 50 ? len(l:stdout_ref) - 50 : 0
+    let l:idx = l:start
+    while l:idx < len(l:stdout_ref)
+      call add(l:combined, {'text': '  ' . l:stdout_ref[l:idx]})
+      let l:idx += 1
+    endwhile
+    call skyrg#log#debug('views/tasks', 'render_output: combined=%d after stdout loop', len(l:combined))
+    if !empty(l:stderr_ref)
       call add(l:combined, {'text': ''})
-      for l:l in l:t.stderr[-20:]
-        call add(l:combined, {'text': '  ' . l:l, 'props': [{'col': 3, 'length': len(l:l), 'type': 'skyrg_dim'}]})
-      endfor
+      let l:idx = len(l:stderr_ref) > 20 ? len(l:stderr_ref) - 20 : 0
+      while l:idx < len(l:stderr_ref)
+        let l:line = l:stderr_ref[l:idx]
+        call add(l:combined, {'text': '  ' . l:line, 'props': [{'col': 3, 'length': len(l:line), 'type': 'skyrg_dim'}]})
+        let l:idx += 1
+      endwhile
     endif
     if !empty(l:combined)
       call s:set_output_title(l:title)
@@ -364,13 +377,24 @@ function! s:recreate_output() abort
     let s:popup_output = 0
   endif
   if !empty(s:out_opts)
-    let s:popup_output = popup_create(s:render_output(), s:out_opts)
+    let l:content = s:render_output()
+    call skyrg#log#debug('views/tasks', 'recreate_output: lines=%d first=%s',
+      \ len(l:content), len(l:content) > 0 ? l:content[0].text : '(empty)')
+    let s:popup_output = popup_create(l:content, s:out_opts)
+    call skyrg#log#debug('views/tasks', 'recreate_output: popup_id=%d', s:popup_output)
   endif
 endfunction
 
 function! s:refresh(timer) abort
   " Stop if popups are gone
-  if !s:popup_list || popup_getpos(s:popup_list) == {}
+  if !s:popup_list
+    call skyrg#log#debug('views/tasks', 'refresh: popup_list is 0, stopping')
+    call s:stop_refresh()
+    return
+  endif
+  let l:pos = popup_getpos(s:popup_list)
+  if empty(l:pos)
+    call skyrg#log#debug('views/tasks', 'refresh: popup_list gone, stopping')
     call s:stop_refresh()
     return
   endif
