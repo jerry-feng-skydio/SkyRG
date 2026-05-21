@@ -64,33 +64,35 @@ still lives in `panel.vim` but starts using the new pane protocol internally.
 
 ### Checklist
 
-- [ ] Create `ui/window.vim`
-  - [ ] `skyrg#ui#window#open(spec)` — create popups from spec, register filter + VimResized
-  - [ ] `skyrg#ui#window#close(handle)` — close all popups, cleanup
-  - [ ] Key dispatch: global_keys → active pane → ignore
-  - [ ] `set_active(name)` — pane switching with border highlights
-  - [ ] `reposition(handle)` — recompute layout, call pane.on_resize
-  - [ ] Layout engine: compute geometry from region + flex specs
-- [ ] Define pane protocol (as a documented dict shape)
-- [ ] Create `ui/panes/list.vim` — generic scrollable list
-  - [ ] Parameterized by `format_item`, `on_select`, `on_accept`, `empty_text`
-  - [ ] Supports: Up/Down, PageUp/PageDown, Enter
-  - [ ] Scroll management (current `results.vim` logic, generalized)
-- [ ] Create `ui/panes/form.vim` — generic field editor
-  - [ ] Parameterized by field definitions (label, type, initial value)
-  - [ ] Supports: field navigation, text editing, cursor movement
-  - [ ] Field types: text, toggle, select
-  - [ ] Hint line support via `hint_fn` callback
-- [ ] Create `ui/panes/preview.vim` — generic file preview
-  - [ ] Parameterized by `context_provider` callback
-  - [ ] Syntax highlighting support (lazy + cache modes)
-  - [ ] Dynamic height (uses popup geometry, not fixed constant)
-- [ ] Create `ui/panes/info.vim` — read-only display
-  - [ ] Simple: accepts line dicts, renders them
-  - [ ] No key handling
-- [ ] Write unit tests for window lifecycle and list pane
-- [ ] Run full test suite — all must pass
-- [ ] Commit: `refactor: window system + generic pane implementations`
+- [x] Create `ui/window.vim`
+  - [x] `skyrg#ui#window#open(spec)` — create popups from spec, register filter + VimResized
+  - [x] `skyrg#ui#window#close(handle)` — close all popups, cleanup
+  - [x] Key dispatch: global_keys → active pane → ignore
+  - [x] `set_active(name)` — pane switching with border highlights
+  - [x] `reposition(handle)` — recompute layout, call pane.on_resize
+  - [x] Layout engine: compute geometry from region + flex specs
+- [x] Define pane protocol (as a documented dict shape — all panes implement render/on_key/on_focus/on_blur/on_resize/cleanup)
+- [x] Create `ui/panes/list.vim` — generic scrollable list
+  - [x] Parameterized by `format_item`, `on_select`, `on_accept`, `empty_text`
+  - [x] Supports: Up/Down, PageUp/PageDown, Enter
+  - [x] Scroll management (current `results.vim` logic, generalized)
+- [x] Create `ui/panes/form.vim` — generic field editor
+  - [x] Parameterized by field definitions (label, type, initial value)
+  - [x] Supports: field navigation, text editing, cursor movement
+  - [x] Field types: text, toggle, select, readonly
+  - [x] Hint line support via `hint_fn` callback
+- [x] Create `ui/panes/preview.vim` — generic file preview
+  - [x] show_file(path, line) + show_file_with_syntax() + toggle_syntax()
+  - [x] Syntax highlighting via hidden window (extracted from panel/preview.vim)
+  - [x] Dynamic height (uses popup geometry, not fixed constant)
+- [x] Create `ui/panes/info.vim` — read-only display
+  - [x] Simple: set_lines/clear, renders them
+  - [x] No key handling
+- [x] Create `ui/panes/tree.vim` — generic directory tree
+  - [x] Expand/collapse, scroll, configurable list_fn + on_select
+- [x] Write unit tests: 76 new tests (test_ui_panes.vim + test_ui_window.vim)
+- [x] Run full test suite — 159 pass, 0 fail
+- [x] Commit: `refactor: window system + generic pane implementations` (15eb768)
 
 ## Phase 3 — Search View Extraction
 
