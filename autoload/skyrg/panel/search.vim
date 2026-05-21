@@ -1,6 +1,11 @@
 " autoload/skyrg/panel/search.vim — Async ripgrep search job management
 "
 " Owns state.search: {gen, pending, job, timer, rg_error}
+"
+" NOTE: The rg command builder and async job logic have been extracted into
+" skyrg#backend#rg (autoload/skyrg/backend/rg.vim). This module still
+" manages the panel-specific wiring (state.results mutation, event emission).
+" In a future phase, this module will delegate fully to the backend.
 
 let s:SEARCH_DELAY = 300
 let s:MAX_RESULTS = 500

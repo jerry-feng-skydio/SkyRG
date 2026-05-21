@@ -87,11 +87,12 @@ endfunction
 "==============================================================================
 " Open
 "==============================================================================
-function! skyrg#panel#open() abort
+function! skyrg#panel#open(...) abort
   if !exists('*popup_create') || !exists('*job_start')
     echohl ErrorMsg | echo '[SkyRG] Requires Vim 8.2+ with +popupwin +job' | echohl None
     return
   endif
+  let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
   let l:c = s:const
   let s:state = {
     \ 'mode': l:c.MODE_SEARCH, 'pane': l:c.PANE_FORM, 'closing': 0,
@@ -116,6 +117,10 @@ function! skyrg#panel#open() abort
     \   'filter': '', 'tab_mode': 0, 'tab_base': '', 'no_matches': 0,
     \ },
     \ }
+  " Pre-fill fields from params (for query loading from history, context, etc.)
+  if !empty(l:params)
+    call s:apply_params(l:params)
+  endif
   call skyrg#panel#style#init()
   call s:register_events()
   let l:g = s:layout().geo
@@ -136,6 +141,36 @@ function! skyrg#panel#open() abort
     autocmd!
     autocmd VimResized * call skyrg#panel#reposition_popups()
   augroup END
+endfunction
+
+"==============================================================================
+" Params application (query pre-loading)
+"==============================================================================
+function! s:apply_params(params) abort
+  let l:c = s:const
+  let l:f = s:state.form.fields
+  if has_key(a:params, 'query')
+    let l:f[l:c.QUERY].value = a:params.query
+    let l:f[l:c.QUERY].pos = len(a:params.query)
+  endif
+  if has_key(a:params, 'dirs')
+    let l:f[l:c.DIRS].value = a:params.dirs
+    let l:f[l:c.DIRS].pos = len(a:params.dirs)
+  endif
+  if has_key(a:params, 'types')
+    let l:f[l:c.TYPES].value = a:params.types
+    let l:f[l:c.TYPES].pos = len(a:params.types)
+  endif
+  if has_key(a:params, 'preset')
+    let l:f[l:c.PRESET].value = a:params.preset
+    let l:f[l:c.PRESET].pos = len(a:params.preset)
+    if !empty(a:params.preset)
+      call skyrg#panel#preset#apply(a:params.preset)
+    endif
+  endif
+  if has_key(a:params, 'gitignore')
+    let l:f[l:c.GITIGN].value = a:params.gitignore ? 'on' : 'off'
+  endif
 endfunction
 
 "==============================================================================

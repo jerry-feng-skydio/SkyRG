@@ -16,5 +16,12 @@ endif
 call skyrg#filter#init()
 
 " Commands
-command! -nargs=0 YRefs call skyrg#panel#ycm_refs()
+command! -nargs=* SkyRG      call skyrg#views#search#open(<args>)
+command! -nargs=0 YRefs      call skyrg#panel#ycm_refs()
 command! -nargs=0 SkyRGReload call skyrg#reload()
+
+" Context popup key mapping (user sets g:skyrg_context_key in .vimrc)
+if exists('g:skyrg_context_key') && !empty(g:skyrg_context_key)
+  execute 'nnoremap <silent>' g:skyrg_context_key ':call skyrg#views#context#open("n")<CR>'
+  execute 'vnoremap <silent>' g:skyrg_context_key ':<C-u>call skyrg#views#context#open("v")<CR>'
+endif

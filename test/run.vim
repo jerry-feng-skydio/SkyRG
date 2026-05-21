@@ -38,6 +38,7 @@ runtime test/test_search_cmd.vim
 runtime test/test_keymap.vim
 runtime test/test_ui_panes.vim
 runtime test/test_ui_window.vim
+runtime test/test_backend_rg.vim
 
 " Summary
 echom ''
