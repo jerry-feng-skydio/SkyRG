@@ -76,10 +76,9 @@ function! skyrg#backend#context#get(ctx) abort
 endfunction
 
 " Execute an action with the given context.
+" Routes through the action dispatch engine which handles vim/shell/job types.
 function! skyrg#backend#context#execute(action, ctx) abort
-  if has_key(a:action, 'execute')
-    call a:action.execute(a:ctx)
-  endif
+  call skyrg#backend#action#dispatch(a:action, a:ctx)
 endfunction
 
 "==============================================================================
