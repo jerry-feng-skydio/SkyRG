@@ -40,6 +40,8 @@ runtime test/test_ui_panes.vim
 runtime test/test_ui_window.vim
 runtime test/test_backend_rg.vim
 runtime test/test_history.vim
+runtime test/test_context.vim
+runtime test/test_favorites.vim
 
 " Summary
 echom ''
