@@ -30,9 +30,14 @@ function! skyrg#backend#action#dispatch(action, ctx) abort
     return
   endif
 
-  " Job action (async)
+  " Job action (async or interactive terminal)
   if has_key(a:action, 'job')
-    call s:run_job(a:action, a:ctx)
+    let l:opts = get(a:action, 'job_opts', {})
+    if get(l:opts, 'interactive', 0)
+      call s:run_interactive(a:action, a:ctx)
+    else
+      call s:run_job(a:action, a:ctx)
+    endif
     return
   endif
 
@@ -90,6 +95,95 @@ function! s:run_shell(action, ctx) abort
     if get(l:opts, 'notify', 1)
       echom printf('[SkyRG] %s done', l:title)
     endif
+  endif
+endfunction
+
+"==============================================================================
+" Interactive — terminal split
+"==============================================================================
+
+" Opens a terminal split for commands needing user input (sudo, OTP, menus).
+" On terminal exit, the normal task completion flow resumes (output parsing,
+" followups, etc.).
+function! s:run_interactive(action, ctx) abort
+  let l:cmd = s:resolve_cmd(a:action.job, a:ctx)
+  let l:opts = get(a:action, 'job_opts', {})
+  let l:title = get(l:opts, 'title', a:action.name)
+  let l:cwd = get(l:opts, 'cwd', getcwd())
+
+  call skyrg#backend#action_log#maybe_compact()
+
+  " Register task
+  let l:task_id = skyrg#backend#tasks#add({
+    \ 'title': l:title,
+    \ 'cmd': l:cmd,
+    \ 'cwd': l:cwd,
+    \ 'context': a:ctx,
+    \ 'action': a:action,
+    \ 'on_success': get(l:opts, 'on_success', []),
+    \ 'on_failure': get(l:opts, 'on_failure', []),
+    \ })
+
+  call skyrg#log#info('action', 'dispatch interactive #%d: "%s" cmd=%s', l:task_id, l:title, l:cmd)
+
+  " Build term options
+  let l:term_opts = {
+    \ 'term_name': '[SkyRG] ' . l:title,
+    \ 'exit_cb': function('s:on_term_exit', [l:task_id]),
+    \ 'term_finish': 'close',
+    \ }
+
+  if !empty(l:cwd) && isdirectory(l:cwd)
+    let l:term_opts.cwd = l:cwd
+  endif
+
+  if has_key(l:opts, 'env') && type(l:opts.env) == v:t_dict
+    let l:term_opts.env = l:opts.env
+  endif
+
+  " Open terminal in a split
+  let l:term_rows = get(l:opts, 'term_rows', min([&lines / 3, 15]))
+  execute l:term_rows . 'split'
+  let l:buf = term_start(['/bin/sh', '-c', l:cmd], l:term_opts)
+  call skyrg#backend#tasks#update(l:task_id, {
+    \ 'job': term_getjob(l:buf),
+    \ 'term_buf': l:buf,
+    \ })
+
+  echom printf('[SkyRG] Interactive: %s', l:title)
+endfunction
+
+function! s:on_term_exit(task_id, job, exit_code) abort
+  let l:task = skyrg#backend#tasks#complete(a:task_id, a:exit_code)
+  if empty(l:task) | return | endif
+
+  let l:opts = get(l:task, 'action', {})
+  let l:opts = get(l:opts, 'job_opts', {})
+  let l:dur = l:task.end_time - l:task.start_time
+
+  " Parse structured output if requested (unlikely for interactive, but supported)
+  let l:fmt = get(l:opts, 'output_format', 'none')
+  let l:task.task_output = skyrg#backend#action#parse_output(l:task.stdout, l:fmt)
+
+  " Notification
+  if get(l:opts, 'notify', 1)
+    if a:exit_code == 0
+      echom printf('[SkyRG] ✓ %s (%ds)', l:task.title, l:dur)
+    else
+      echohl ErrorMsg
+      echom printf('[SkyRG] ✗ %s failed (exit %d, %ds)', l:task.title, a:exit_code, l:dur)
+      echohl None
+    endif
+  endif
+
+  " Followup actions — store on task for on-demand access
+  let l:followups = a:exit_code == 0
+    \ ? get(l:task, 'on_success', [])
+    \ : get(l:task, 'on_failure', [])
+
+  if !empty(l:followups)
+    let l:ctx = s:build_followup_ctx(l:task)
+    call skyrg#backend#tasks#set_followups(a:task_id, l:followups, l:ctx)
   endif
 endfunction
 
