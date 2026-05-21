@@ -158,6 +158,16 @@ function! s:on_err(task_id, ch, msg) abort
 endfunction
 
 function! s:on_exit(task_id, job, exit_code) abort
+  " Drain any remaining buffered output — Vim's exit_cb can fire before
+  " all out_cb/err_cb calls are processed
+  let l:ch = job_getchannel(a:job)
+  while ch_status(l:ch, {'part': 'out'}) ==# 'buffered'
+    call skyrg#backend#tasks#append_output(a:task_id, 'stdout', ch_read(l:ch))
+  endwhile
+  while ch_status(l:ch, {'part': 'err'}) ==# 'buffered'
+    call skyrg#backend#tasks#append_output(a:task_id, 'stderr', ch_read(l:ch, {'part': 'err'}))
+  endwhile
+
   let l:task = skyrg#backend#tasks#complete(a:task_id, a:exit_code)
   if empty(l:task) | return | endif
 

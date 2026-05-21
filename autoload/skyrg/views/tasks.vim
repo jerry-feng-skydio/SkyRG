@@ -208,23 +208,26 @@ function! s:render_output() abort
 endfunction
 
 " Read a task log file and return popup-formatted output lines.
+" Log format: header (=== ... ===), blank, output lines, blank, footer (=== ...)
 function! s:read_log_output(path) abort
   if !filereadable(a:path) | return [] | endif
   let l:raw = readfile(a:path)
   let l:combined = []
-  let l:in_header = 1
+  let l:sep_count = 0
   for l:line in l:raw
-    " Skip the header block (everything before the first blank line after ===)
-    if l:in_header
-      if l:line =~# '^=\+$' && !empty(l:combined)
-        let l:in_header = 0
-        let l:combined = []
-      endif
+    " Count separator lines (====...): 1st ends the header preamble,
+    " 2nd ends the header block, 3rd starts the footer
+    if l:line =~# '^=\+$'
+      let l:sep_count += 1
       continue
     endif
-    " Skip footer
-    if l:line =~# '^=\+$'
-      break
+    " Skip everything in the header (before 2nd separator)
+    if l:sep_count < 2
+      continue
+    endif
+    " Skip blank lines immediately after header
+    if empty(l:line) && empty(l:combined)
+      continue
     endif
     if l:line =~# '^\[stderr\]'
       call add(l:combined, {'text': '  ' . l:line, 'props': [{'col': 3, 'length': len(l:line), 'type': 'skyrg_dim'}]})
