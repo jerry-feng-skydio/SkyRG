@@ -23,6 +23,8 @@ command! -nargs=0 SkyRGHistory       call skyrg#views#history#open()
 command! -nargs=0 SkyRGLog           execute 'split' skyrg#log#file()
 command! -nargs=0 SkyRGLogClear      call skyrg#log#clear() | echo '[SkyRG] Log cleared'
 command! -nargs=0 SkyRGDebugHistory  call skyrg#views#debug#history()
+command! -nargs=0 SkyRGTasks         call skyrg#views#tasks#open()
+command! -nargs=0 SkyRGActionLog     call skyrg#views#tasks#open_last_log()
 command! -nargs=0 YRefs              call skyrg#panel#ycm_refs()
 command! -nargs=0 SkyRGReload        call skyrg#reload()
 

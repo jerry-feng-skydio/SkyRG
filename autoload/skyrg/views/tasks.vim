@@ -1,0 +1,301 @@
+" autoload/skyrg/views/tasks.vim — Task viewer popup
+"
+" Shows active and recent tasks with live output preview.
+"
+" Usage:
+"   call skyrg#views#tasks#open()
+"
+" Keys:
+"   j/k or Down/Up   — select task
+"   Enter             — open full log in a split
+"   c                 — cancel running task
+"   f                 — trigger followup actions
+"   q / Esc           — close
+
+let s:popup_list = 0
+let s:popup_output = 0
+let s:selected = 0
+let s:refresh_timer = 0
+
+"==============================================================================
+" Open
+"==============================================================================
+
+" Open the most recent task's log file in a split.
+function! skyrg#views#tasks#open_last_log() abort
+  let l:all = skyrg#backend#tasks#all()
+  if !empty(l:all)
+    let l:log = get(l:all[0], 'log_file', '')
+    if !empty(l:log) && filereadable(l:log)
+      execute 'split' fnameescape(l:log)
+      return
+    endif
+  endif
+  " Fall back to index
+  let l:entries = skyrg#backend#action_log#list()
+  if !empty(l:entries)
+    let l:path = skyrg#backend#action_log#path(l:entries[0])
+    if !empty(l:path) && filereadable(l:path)
+      execute 'split' fnameescape(l:path)
+      return
+    endif
+  endif
+  echo '[SkyRG] No action logs found'
+endfunction
+
+function! skyrg#views#tasks#open() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  " Also include recent tasks from the action log if memory is empty
+  if empty(l:tasks)
+    let l:log_entries = skyrg#backend#action_log#list()
+    if empty(l:log_entries)
+      echo '[SkyRG] No tasks'
+      return
+    endif
+  endif
+
+  call s:close_popups()
+  let s:selected = 0
+
+  let l:width = min([&columns - 4, 80])
+  let l:list_h = min([&lines / 3, 12])
+  let l:out_h = &lines - l:list_h - 8
+
+  " Task list popup
+  let s:popup_list = popup_create(s:render_list(), {
+    \ 'title': ' Tasks ',
+    \ 'line': 2,
+    \ 'col': (&columns - l:width) / 2,
+    \ 'pos': 'topleft',
+    \ 'border': [1,1,1,1],
+    \ 'borderchars': ['─','│','─','│','┌','┐','┘','└'],
+    \ 'borderhighlight': ['Title'],
+    \ 'padding': [0,1,0,1],
+    \ 'minwidth': l:width,
+    \ 'maxwidth': l:width,
+    \ 'minheight': l:list_h,
+    \ 'maxheight': l:list_h,
+    \ 'scrollbar': 1,
+    \ 'filter': function('s:on_key'),
+    \ 'mapping': 0,
+    \ 'callback': function('s:on_close'),
+    \ 'zindex': 250,
+    \ })
+
+  " Output preview popup
+  let s:popup_output = popup_create(s:render_output(), {
+    \ 'title': ' Output ',
+    \ 'line': l:list_h + 5,
+    \ 'col': (&columns - l:width) / 2,
+    \ 'pos': 'topleft',
+    \ 'border': [1,1,1,1],
+    \ 'borderchars': ['─','│','─','│','┌','┐','┘','└'],
+    \ 'padding': [0,1,0,1],
+    \ 'minwidth': l:width,
+    \ 'maxwidth': l:width,
+    \ 'minheight': l:out_h,
+    \ 'maxheight': l:out_h,
+    \ 'scrollbar': 1,
+    \ 'zindex': 249,
+    \ })
+
+  " Auto-refresh while open (for running tasks)
+  let s:refresh_timer = timer_start(1000, function('s:refresh'), {'repeat': -1})
+  call skyrg#log#info('views/tasks', 'open')
+endfunction
+
+"==============================================================================
+" Rendering
+"==============================================================================
+
+function! s:render_list() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if empty(l:tasks)
+    " Fall back to log index
+    let l:entries = skyrg#backend#action_log#list()
+    return s:render_log_entries(l:entries)
+  endif
+
+  let l:lines = []
+  for l:i in range(len(l:tasks))
+    let l:t = l:tasks[l:i]
+    let l:icon = s:status_icon(l:t.status)
+    let l:dur = s:format_dur(l:t)
+    let l:text = printf('  %s %-35s %6s  [%s]', l:icon, l:t.title[:34], l:dur, l:t.status)
+    if l:i == s:selected
+      call add(l:lines, {'text': l:text, 'props': [{'col': 1, 'length': len(l:text), 'type': 'skyrg_sel'}]})
+    else
+      call add(l:lines, {'text': l:text})
+    endif
+  endfor
+  return l:lines
+endfunction
+
+function! s:render_log_entries(entries) abort
+  let l:lines = []
+  for l:i in range(len(a:entries))
+    let l:e = a:entries[l:i]
+    let l:icon = get(l:e, 'exit_code', 0) == 0 ? '✓' : '✗'
+    let l:dur = ''
+    if has_key(l:e, 'end_time') && has_key(l:e, 'start_time')
+      let l:secs = l:e.end_time - l:e.start_time
+      let l:dur = l:secs >= 60 ? printf('%dm', l:secs / 60) : printf('%ds', l:secs)
+    endif
+    let l:text = printf('  %s %-35s %6s  [%s]',
+      \ l:icon, get(l:e, 'title', '?')[:34], l:dur, get(l:e, 'status', '?'))
+    if l:i == s:selected
+      call add(l:lines, {'text': l:text, 'props': [{'col': 1, 'length': len(l:text), 'type': 'skyrg_sel'}]})
+    else
+      call add(l:lines, {'text': l:text})
+    endif
+  endfor
+  return empty(l:lines) ? [{'text': '  (no tasks)'}] : l:lines
+endfunction
+
+function! s:render_output() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if empty(l:tasks) || s:selected >= len(l:tasks)
+    return [{'text': '  (select a task)'}]
+  endif
+  let l:t = l:tasks[s:selected]
+  let l:title = l:t.title
+  let l:lines = []
+  " Interleave stdout and stderr (show last 50 lines)
+  let l:combined = []
+  for l:l in l:t.stdout[-50:]
+    call add(l:combined, {'text': '  ' . l:l})
+  endfor
+  if !empty(l:t.stderr)
+    call add(l:combined, {'text': ''})
+    for l:l in l:t.stderr[-20:]
+      call add(l:combined, {'text': '  ' . l:l, 'props': [{'col': 3, 'length': len(l:l), 'type': 'skyrg_dim'}]})
+    endfor
+  endif
+  if empty(l:combined)
+    return [{'text': '  (no output yet)'}]
+  endif
+
+  if s:popup_output
+    call popup_setoptions(s:popup_output, {'title': ' Output: ' . l:title . ' '})
+  endif
+  return l:combined
+endfunction
+
+function! s:status_icon(status) abort
+  if a:status ==# 'running' | return '⟳' | endif
+  if a:status ==# 'done'    | return '✓' | endif
+  if a:status ==# 'failed'  | return '✗' | endif
+  return '?'
+endfunction
+
+function! s:format_dur(task) abort
+  let l:end = a:task.end_time > 0 ? a:task.end_time : localtime()
+  let l:secs = l:end - a:task.start_time
+  if l:secs >= 60
+    return printf('%dm%ds', l:secs / 60, l:secs % 60)
+  endif
+  return printf('%ds', l:secs)
+endfunction
+
+"==============================================================================
+" Key handling
+"==============================================================================
+
+function! s:on_key(winid, key) abort
+  let l:tasks = skyrg#backend#tasks#all()
+  let l:count = len(l:tasks)
+
+  if a:key ==# "\<Esc>" || a:key ==# 'q'
+    call s:close_popups()
+    return 1
+  endif
+
+  if a:key ==# 'j' || a:key ==# "\<Down>"
+    let s:selected = min([l:count - 1, s:selected + 1])
+    call s:update()
+    return 1
+  endif
+  if a:key ==# 'k' || a:key ==# "\<Up>"
+    let s:selected = max([0, s:selected - 1])
+    call s:update()
+    return 1
+  endif
+
+  " Enter: open full log
+  if a:key ==# "\<CR>"
+    if s:selected < l:count
+      let l:t = l:tasks[s:selected]
+      let l:log = get(l:t, 'log_file', '')
+      if !empty(l:log) && filereadable(l:log)
+        call s:close_popups()
+        execute 'split' fnameescape(l:log)
+      endif
+    endif
+    return 1
+  endif
+
+  " c: cancel running task
+  if a:key ==# 'c'
+    if s:selected < l:count
+      let l:t = l:tasks[s:selected]
+      if l:t.status ==# 'running' && has_key(l:t, 'job')
+        call job_stop(l:t.job)
+        call skyrg#log#info('views/tasks', 'cancel #%d "%s"', l:t.id, l:t.title)
+        echom printf('[SkyRG] Cancelling: %s', l:t.title)
+      endif
+    endif
+    return 1
+  endif
+
+  return 1
+endfunction
+
+function! s:on_close(id, result) abort
+  call s:stop_refresh()
+  let s:popup_list = 0
+  if s:popup_output
+    silent! call popup_close(s:popup_output)
+    let s:popup_output = 0
+  endif
+endfunction
+
+"==============================================================================
+" Refresh / update
+"==============================================================================
+
+function! s:update() abort
+  if s:popup_list
+    call popup_settext(s:popup_list, s:render_list())
+  endif
+  if s:popup_output
+    call popup_settext(s:popup_output, s:render_output())
+  endif
+endfunction
+
+function! s:refresh(timer) abort
+  " Stop if popups are gone
+  if !s:popup_list || popup_getpos(s:popup_list) == {}
+    call s:stop_refresh()
+    return
+  endif
+  call s:update()
+endfunction
+
+function! s:stop_refresh() abort
+  if s:refresh_timer
+    call timer_stop(s:refresh_timer)
+    let s:refresh_timer = 0
+  endif
+endfunction
+
+function! s:close_popups() abort
+  call s:stop_refresh()
+  if s:popup_list
+    silent! call popup_close(s:popup_list)
+    let s:popup_list = 0
+  endif
+  if s:popup_output
+    silent! call popup_close(s:popup_output)
+    let s:popup_output = 0
+  endif
+endfunction
