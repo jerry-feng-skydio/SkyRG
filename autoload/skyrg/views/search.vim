@@ -29,12 +29,26 @@ let s:hist_nav = {'entries': [], 'nav_idx': -1, 'saved_query': {}}
 
 function! skyrg#views#search#open(...) abort
   let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
-  " Auto-restore last query if no explicit params given
   if empty(l:params) && get(g:, 'skyrg_restore_last', 1)
+    " No params at all: full restore from history
     let l:last = skyrg#backend#history#load_last()
     if !empty(l:last)
       let l:params = l:last
     endif
+  elseif !empty(l:params) && !get(l:params, '_complete', 0)
+    " Partial params (e.g. context action passes only 'query'):
+    " merge on top of last history so the user keeps their filter scope
+    let l:last = skyrg#backend#history#load_last()
+    if !empty(l:last)
+      let l:merged = copy(l:last)
+      call extend(l:merged, l:params)
+      let l:params = l:merged
+      call skyrg#log#debug('views/search', 'merged partial params with last history')
+    endif
+  endif
+  " Strip internal flag before passing downstream
+  if has_key(l:params, '_complete')
+    call remove(l:params, '_complete')
   endif
   call skyrg#panel#set_opening_via_view()
   call skyrg#panel#open(l:params)
