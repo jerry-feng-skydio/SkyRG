@@ -43,6 +43,11 @@ function! s:history_file(...) abort
   return s:data_dir() . '/' . l:hash . '.jsonl'
 endfunction
 
+" Public accessor for the history file path (used by debug views).
+function! skyrg#backend#history#file_path(...) abort
+  return call('s:history_file', a:000)
+endfunction
+
 function! s:ensure_dir() abort
   let l:dir = s:data_dir()
   if !isdirectory(l:dir)
