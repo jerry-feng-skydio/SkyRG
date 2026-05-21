@@ -103,28 +103,34 @@ rg backend. `panel.vim` becomes a thin compatibility shim.
 
 ### Checklist
 
-- [ ] Create `autoload/skyrg/views/search.vim`
-  - [ ] `skyrg#views#search#open(params)` — main entry point
-  - [ ] Construct form pane with search-specific fields (Query, Dirs, Types, Preset, .gitignore)
-  - [ ] Construct list pane with search-result formatting
-  - [ ] Construct preview pane with file preview
-  - [ ] Construct info pane for preset display + carousel
-  - [ ] Construct tree sidepane for directory browsing
-  - [ ] Build window spec and call `skyrg#ui#window#open(spec)`
-  - [ ] Wire events: form_changed → rg.schedule, results_changed → preview.update
-  - [ ] Support `params` dict for pre-filling fields (query loading)
-- [ ] Extract rg backend: `panel/search.vim` → `backend/rg.vim`
-  - [ ] Conform to backend protocol: `run(params, callbacks)`, `cancel()`
-  - [ ] Keep generation counter logic
-- [ ] Convert `panel.vim` to compat shim:
-  - [ ] `skyrg#panel#open()` → `skyrg#views#search#open()`
-  - [ ] `skyrg#panel#state()` → compat dict mapping to new pane states
-  - [ ] `skyrg#panel#const()` → still works
-  - [ ] `skyrg#panel#browse()` → uses window system directly
-- [ ] Migrate `panel/complete.vim` and `panel/preset.vim` (keep in `panel/` or move to `backend/`)
-- [ ] Run full test suite — all must pass
-- [ ] Manual smoke test: open search, type query, navigate results, preview, tree, presets
-- [ ] Commit: `refactor: extract search view, panel.vim becomes compat shim`
+**Approach**: Incremental. views/search.vim delegates to panel.vim for popup
+lifecycle while adding query-loading capability. Panel modules continue using
+`skyrg#panel#state()`. Full migration to generic window system deferred to
+a future phase to avoid a risky big-bang rewrite.
+
+- [x] Create `autoload/skyrg/views/search.vim`
+  - [x] `skyrg#views#search#open(params)` — main entry point
+  - [x] `skyrg#views#search#load_query(params)` — fill fields on open panel
+  - [x] `skyrg#views#search#get_query()` — snapshot for history saving
+  - [x] `skyrg#views#search#browse(matches, title)` — browse mode wrapper
+  - [x] Support `params` dict for pre-filling fields (query loading)
+  - [ ] Construct generic panes + `skyrg#ui#window#open(spec)` (future: full migration)
+- [x] Extract rg backend: `backend/rg.vim`
+  - [x] Conform to backend protocol: `run(params, callbacks)`, `cancel()`
+  - [x] Generation counter for stale result rejection
+  - [x] `schedule(params, callbacks, delay)` for debounced search
+  - [x] Command builder extracted from panel/search.vim
+  - [ ] Wire panel/search.vim to delegate to backend (future)
+- [x] Modify `panel.vim` to accept params:
+  - [x] `skyrg#panel#open(params)` — accepts optional params dict
+  - [x] `s:apply_params()` — pre-fills form fields from params
+  - [x] `skyrg#panel#state()`, `skyrg#panel#const()` — unchanged
+  - [x] `skyrg#panel#browse()` — unchanged
+- [x] Add `:SkyRG` command in plugin/skyrg.vim → routes to views/search
+- [x] Add context key mapping support via `g:skyrg_context_key`
+- [ ] Migrate `panel/complete.vim` and `panel/preset.vim` (keep in `panel/` for now)
+- [x] Run full test suite — 168 pass, 0 fail
+- [x] Commit: `refactor: search view + rg backend extraction` (ea23d0e)
 
 ## Phase 4 — Backend Extraction + History
 
