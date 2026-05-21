@@ -260,9 +260,10 @@ function! s:set_output_title(title) abort
 endfunction
 
 function! s:status_icon(status) abort
-  if a:status ==# 'running' | return '⟳' | endif
-  if a:status ==# 'done'    | return '✓' | endif
-  if a:status ==# 'failed'  | return '✗' | endif
+  if a:status ==# 'running'  | return '⟳' | endif
+  if a:status ==# 'awaiting' | return '❗' | endif
+  if a:status ==# 'done'     | return '✓' | endif
+  if a:status ==# 'failed'   | return '✗' | endif
   return '?'
 endfunction
 
@@ -317,6 +318,32 @@ function! s:on_key(winid, key) abort
         call job_stop(l:t.job)
         call skyrg#log#info('views/tasks', 'cancel #%d "%s"', l:t.id, l:t.title)
         echom printf('[SkyRG] Cancelling: %s', l:t.title)
+      endif
+    endif
+    return 1
+  endif
+
+  " f: open followup actions for awaiting task
+  if a:key ==# 'f'
+    let l:tasks = skyrg#backend#tasks#all()
+    if s:selected < len(l:tasks)
+      let l:t = l:tasks[s:selected]
+      if l:t.status ==# 'awaiting'
+        call s:close_popups()
+        call skyrg#backend#action#show_followups(l:t.id)
+      endif
+    endif
+    return 1
+  endif
+
+  " d: dismiss followups on awaiting task
+  if a:key ==# 'd'
+    let l:tasks = skyrg#backend#tasks#all()
+    if s:selected < len(l:tasks)
+      let l:t = l:tasks[s:selected]
+      if l:t.status ==# 'awaiting'
+        call skyrg#backend#tasks#dismiss_followups(l:t.id)
+        call s:update()
       endif
     endif
     return 1

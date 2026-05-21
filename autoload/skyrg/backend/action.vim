@@ -194,23 +194,23 @@ function! s:on_exit(task_id, job, exit_code) abort
     endif
   endif
 
-  " Followup actions
+  " Followup actions — store on task for on-demand access
   let l:followups = a:exit_code == 0
     \ ? get(l:task, 'on_success', [])
     \ : get(l:task, 'on_failure', [])
 
   if !empty(l:followups)
-    call s:show_followup(l:task, l:followups)
+    let l:ctx = s:build_followup_ctx(l:task)
+    call skyrg#backend#tasks#set_followups(a:task_id, l:followups, l:ctx)
   endif
 endfunction
 
-"==============================================================================
+"=============================================================================="
 " Followup popup
-"==============================================================================
+"=============================================================================="
 
-" Show a small popup offering followup actions after task completion.
-function! s:show_followup(task, followups) abort
-  " Enrich followup context with task output
+" Build the enriched context for followup actions.
+function! s:build_followup_ctx(task) abort
   let l:ctx = copy(get(a:task, 'context', {}))
   let l:ctx.task_id = a:task.id
   let l:ctx.task_title = a:task.title
@@ -219,41 +219,44 @@ function! s:show_followup(task, followups) abort
   let l:ctx.task_stderr = a:task.stderr
   let l:ctx.task_output = get(a:task, 'task_output', [])
   let l:ctx.task_log = get(a:task, 'log_file', '')
-
-  " Register followups as temporary context actions and show popup
-  " We use a timer to defer, since we're in exit_cb and can't open popups
-  let s:pending_followup = {'task': a:task, 'actions': a:followups, 'ctx': l:ctx}
-  call timer_start(50, function('s:do_followup'))
+  return l:ctx
 endfunction
 
-let s:pending_followup = {}
+" Public: show followup popup for a specific task.
+" Called from the task viewer (f key) and global shortcut (<Leader>f).
+function! skyrg#backend#action#show_followups(task_id) abort
+  let l:t = skyrg#backend#tasks#get(a:task_id)
+  if empty(l:t) || l:t.status !=# 'awaiting' | return 0 | endif
+  let l:followups = get(l:t, 'followups', [])
+  let l:ctx = get(l:t, 'followup_ctx', {})
+  if empty(l:followups) | return 0 | endif
 
-function! s:do_followup(timer) abort
-  if empty(s:pending_followup) | return | endif
-  let l:f = s:pending_followup
-  let s:pending_followup = {}
-
-  " Always add a "View log" and "Dismiss" option
-  let l:actions = copy(l:f.actions)
+  " Always add built-in options
+  let l:actions = copy(l:followups)
   call add(l:actions, {
     \ 'name': 'View log',
     \ 'key': 'l',
     \ 'execute': {ctx -> execute('split ' . fnameescape(ctx.task_log))},
     \ })
+  call add(l:actions, {
+    \ 'name': 'Dismiss',
+    \ 'key': 'd',
+    \ 'execute': {ctx -> skyrg#backend#tasks#dismiss_followups(ctx.task_id)},
+    \ })
 
-  " Show as a temporary context popup
-  " We register them, show the popup, then clean up
-  let l:saved = []
-  for l:a in l:actions
-    let l:a.group = 'followup'
-    let l:a.priority = get(l:a, 'priority', 100)
-    call add(l:saved, l:a)
-  endfor
+  call skyrg#log#info('action', 'followup for #%d: %d actions', a:task_id, len(l:actions))
+  call s:followup_popup(l:t, l:actions, l:ctx)
+  return 1
+endfunction
 
-  call skyrg#log#info('action', 'followup for #%d: %d actions', l:f.task.id, len(l:actions))
-
-  " Use a lightweight popup instead of the full context system
-  call s:followup_popup(l:f.task, l:actions, l:f.ctx)
+" Public: show followup popup for the most recent awaiting task.
+function! skyrg#backend#action#show_latest_followup() abort
+  let l:awaiting = skyrg#backend#tasks#awaiting()
+  if empty(l:awaiting)
+    echom '[SkyRG] No tasks awaiting followup'
+    return
+  endif
+  call skyrg#backend#action#show_followups(l:awaiting[0].id)
 endfunction
 
 function! s:followup_popup(task, actions, ctx) abort
@@ -305,6 +308,10 @@ function! s:followup_key(winid, key) abort
       if get(l:a, 'key', '') ==# a:key
         call popup_close(a:winid)
         call skyrg#log#info('action', 'followup execute "%s"', l:a.name)
+        " Dismiss followups after executing (unless it's the dismiss action itself)
+        if l:a.name !=# 'Dismiss'
+          call skyrg#backend#tasks#dismiss_followups(s:followup_ctx.task_id)
+        endif
         if has_key(l:a, 'execute')
           call l:a.execute(s:followup_ctx)
         elseif has_key(l:a, 'shell') || has_key(l:a, 'job')

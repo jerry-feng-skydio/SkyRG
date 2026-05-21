@@ -79,9 +79,9 @@ endfunction
 function! skyrg#backend#tasks#complete(id, exit_code) abort
   if !has_key(s:tasks, a:id) | return | endif
   let l:t = s:tasks[a:id]
-  let l:t.status = a:exit_code == 0 ? 'done' : 'failed'
   let l:t.exit_code = a:exit_code
   let l:t.end_time = localtime()
+  let l:t.status = a:exit_code == 0 ? 'done' : 'failed'
 
   " Finalize the log file
   call skyrg#backend#action_log#finalize(l:t)
@@ -117,6 +117,34 @@ function! skyrg#backend#tasks#running_count() abort
   return len(skyrg#backend#tasks#running())
 endfunction
 
+" Return list of tasks awaiting followup, newest first.
+function! skyrg#backend#tasks#awaiting() abort
+  let l:list = filter(values(s:tasks), {_, t -> t.status ==# 'awaiting'})
+  call sort(l:list, {a, b -> b.end_time - a.end_time})
+  return l:list
+endfunction
+
+" Store followup actions on a task and mark it as awaiting.
+function! skyrg#backend#tasks#set_followups(id, followups, ctx) abort
+  if !has_key(s:tasks, a:id) | return | endif
+  let l:t = s:tasks[a:id]
+  let l:t.followups = a:followups
+  let l:t.followup_ctx = a:ctx
+  let l:t.status = 'awaiting'
+  call skyrg#log#info('tasks', 'awaiting #%d "%s" (%d followups)',
+    \ a:id, l:t.title, len(a:followups))
+endfunction
+
+" Dismiss followups on a task (mark as done/failed based on exit_code).
+function! skyrg#backend#tasks#dismiss_followups(id) abort
+  if !has_key(s:tasks, a:id) | return | endif
+  let l:t = s:tasks[a:id]
+  if l:t.status !=# 'awaiting' | return | endif
+  let l:t.status = l:t.exit_code == 0 ? 'done' : 'failed'
+  let l:t.followups = []
+  let l:t.followup_ctx = {}
+endfunction
+
 "==============================================================================
 " Statusline component
 "==============================================================================
@@ -141,10 +169,18 @@ function! skyrg#backend#tasks#statusline() abort
     endif
   endif
 
+  " Show awaiting tasks (highest priority after running)
+  let l:awaiting = skyrg#backend#tasks#awaiting()
+  if !empty(l:awaiting)
+    let l:t = l:awaiting[0]
+    return printf(' ❗%s (<Leader>f) ', l:t.title)
+  endif
+
   " Show most recent completion for 5 seconds
   let l:now = localtime()
   for l:t in values(s:tasks)
-    if l:t.status !=# 'running' && l:t.end_time > 0 && (l:now - l:t.end_time) < 5
+    if l:t.status !=# 'running' && l:t.status !=# 'awaiting'
+      \ && l:t.end_time > 0 && (l:now - l:t.end_time) < 5
       let l:icon = l:t.status ==# 'done' ? '✓' : '✗'
       return printf(' %s %s ', l:icon, l:t.title)
     endif
@@ -158,8 +194,10 @@ endfunction
 "==============================================================================
 
 " Remove old completed tasks from memory (keep s:max_recent).
+" Never prune running or awaiting tasks.
 function! s:prune() abort
-  let l:completed = filter(values(s:tasks), {_, t -> t.status !=# 'running'})
+  let l:completed = filter(values(s:tasks),
+    \ {_, t -> t.status !=# 'running' && t.status !=# 'awaiting'})
   if len(l:completed) <= s:max_recent | return | endif
   call sort(l:completed, {a, b -> a.start_time - b.start_time})
   let l:to_remove = l:completed[:len(l:completed) - s:max_recent - 1]
