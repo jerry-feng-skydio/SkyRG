@@ -164,20 +164,17 @@ function! s:render_output() abort
     let l:title = l:t.title
     let l:stdout_ref = l:t.stdout
     let l:stderr_ref = l:t.stderr
-    call skyrg#log#debug('views/tasks',
-      \ 'render_output: task=%s status=%s stdout=%d stderr=%d type=%s first=%s log=%s',
-      \ l:title, l:t.status, len(l:stdout_ref), len(l:stderr_ref),
-      \ type(l:stdout_ref),
-      \ len(l:stdout_ref) > 0 ? string(l:stdout_ref[0]) : 'EMPTY',
-      \ get(l:t, 'log_file', 'none'))
+    call skyrg#log#debug('views/tasks', 'render_output: task=%s status=%s stdout=%d stderr=%d',
+      \ l:title, l:t.status, len(l:stdout_ref), len(l:stderr_ref))
     let l:combined = []
+    " NOTE: explicit while-loop — list[-N:] slicing has edge cases with
+    " async-modified lists on Vim 9.1
     let l:start = len(l:stdout_ref) > 50 ? len(l:stdout_ref) - 50 : 0
     let l:idx = l:start
     while l:idx < len(l:stdout_ref)
       call add(l:combined, {'text': '  ' . l:stdout_ref[l:idx]})
       let l:idx += 1
     endwhile
-    call skyrg#log#debug('views/tasks', 'render_output: combined=%d after stdout loop', len(l:combined))
     if !empty(l:stderr_ref)
       call add(l:combined, {'text': ''})
       let l:idx = len(l:stderr_ref) > 20 ? len(l:stderr_ref) - 20 : 0
@@ -377,24 +374,13 @@ function! s:recreate_output() abort
     let s:popup_output = 0
   endif
   if !empty(s:out_opts)
-    let l:content = s:render_output()
-    call skyrg#log#debug('views/tasks', 'recreate_output: lines=%d first=%s',
-      \ len(l:content), len(l:content) > 0 ? l:content[0].text : '(empty)')
-    let s:popup_output = popup_create(l:content, s:out_opts)
-    call skyrg#log#debug('views/tasks', 'recreate_output: popup_id=%d', s:popup_output)
+    let s:popup_output = popup_create(s:render_output(), s:out_opts)
   endif
 endfunction
 
 function! s:refresh(timer) abort
   " Stop if popups are gone
-  if !s:popup_list
-    call skyrg#log#debug('views/tasks', 'refresh: popup_list is 0, stopping')
-    call s:stop_refresh()
-    return
-  endif
-  let l:pos = popup_getpos(s:popup_list)
-  if empty(l:pos)
-    call skyrg#log#debug('views/tasks', 'refresh: popup_list gone, stopping')
+  if !s:popup_list || empty(popup_getpos(s:popup_list))
     call s:stop_refresh()
     return
   endif

@@ -150,7 +150,6 @@ endfunction
 "==============================================================================
 
 function! s:on_out(task_id, ch, msg) abort
-  call skyrg#log#debug('action', 'out_cb #%d: %s', a:task_id, a:msg)
   call skyrg#backend#tasks#append_output(a:task_id, 'stdout', a:msg)
 endfunction
 
