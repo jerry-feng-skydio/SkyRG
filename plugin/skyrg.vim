@@ -14,8 +14,14 @@ endif
 
 " Initialize the filter system
 call skyrg#filter#init()
-call skyrg#log#info('plugin', 'loaded level=%s file=%s',
-  \ toupper(get(g:, 'skyrg_log_level', 'INFO')), skyrg#log#file())
+let s:plugin_dir = expand('<sfile>:p:h:h')
+let s:commit = 'unknown'
+if isdirectory(s:plugin_dir . '/.git')
+  let s:commit = trim(system('git -C ' . shellescape(s:plugin_dir) . ' rev-parse --short HEAD'))
+  if v:shell_error | let s:commit = 'unknown' | endif
+endif
+call skyrg#log#info('plugin', 'loaded commit=%s level=%s file=%s',
+  \ s:commit, toupper(get(g:, 'skyrg_log_level', 'INFO')), skyrg#log#file())
 
 " Commands
 command! -nargs=* SkyRG              call skyrg#views#search#open(<args>)

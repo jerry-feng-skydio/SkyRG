@@ -351,6 +351,7 @@ function! s:update() abort
   if s:popup_output
     call popup_settext(s:popup_output, s:render_output())
   endif
+  redraw
 endfunction
 
 function! s:refresh(timer) abort
