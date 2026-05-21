@@ -87,12 +87,24 @@ endfunction
 "==============================================================================
 " Open
 "==============================================================================
+let s:opening_via_view = 0
+
+function! skyrg#panel#set_opening_via_view() abort
+  let s:opening_via_view = 1
+endfunction
+
 function! skyrg#panel#open(...) abort
   if !exists('*popup_create') || !exists('*job_start')
     echohl ErrorMsg | echo '[SkyRG] Requires Vim 8.2+ with +popupwin +job' | echohl None
     return
   endif
   let l:params = a:0 > 0 && type(a:1) == v:t_dict ? a:1 : {}
+  " If called directly (not via views/search), delegate so history restore runs
+  if !s:opening_via_view && empty(l:params)
+    call skyrg#views#search#open()
+    return
+  endif
+  let s:opening_via_view = 0
   let l:open_timer = skyrg#log#timer()
   call skyrg#log#info('panel', 'open mode=search')
   if !empty(l:params)

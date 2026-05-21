@@ -197,3 +197,69 @@ if (stridx(s:cwd, 'aircam') != -1)
     let g:SkyFilter.default = 'aircam'
 endif
 ```
+
+# Debugging with logs (AI-aided)
+
+SkyRG has structured logging that makes it easy to diagnose bugs — especially
+with an AI assistant. The workflow is:
+
+1. **Enable debug logging** in your `.vimrc`:
+   ```vim
+   let g:skyrg_log_level = 'DEBUG'   " DEBUG|INFO|WARN|ERROR|OFF (default: INFO)
+   ```
+
+2. **Reproduce the bug**, then open the log:
+   ```vim
+   :SkyRGLog        " opens ~/.local/share/skyrg/skyrg.log in a split
+   ```
+
+3. **Copy the relevant section** and paste it to your AI assistant along with
+   a description of what went wrong.
+
+## Log location
+
+| Setting | Default |
+|---|---|
+| `g:skyrg_log_level` | `'INFO'` — set to `'DEBUG'` for maximum detail |
+| `g:skyrg_log_file` | `~/.local/share/skyrg/skyrg.log` |
+| `g:skyrg_log_echo` | `0` — set to `1` to also echo to `:messages` |
+| `g:skyrg_log_max` | `5000` — auto-rotates when exceeded |
+
+## What gets logged
+
+Every log line has a timestamp, level, and source module tag:
+
+```
+2026-05-20 18:02:00 [INFO] [panel] open mode=search
+2026-05-20 18:02:00 [DEBUG] [panel] open params: {"query":"TODO","types":"py"}
+2026-05-20 18:02:02 [INFO] [search] run gen=1 query="CaptureSettings"
+2026-05-20 18:02:02 [DEBUG] [search] cmd: rg --column --line-number ... -- CaptureSettings .
+2026-05-20 18:02:02 [INFO] [search] done gen=1 results=500 (620.6ms)
+2026-05-20 18:02:08 [INFO] [results] jump ./vehicle/mavlink/mavlink_camera.cc:810:15
+2026-05-20 18:02:08 [INFO] [views/search] commit_to_history query="CaptureSettings"
+2026-05-20 18:02:08 [INFO] [panel] close
+```
+
+Key module tags to grep for:
+- **`[panel]`** — open/close, pane switching, key dispatch, reposition
+- **`[panel/key]`** — every keypress (DEBUG only)
+- **`[search]`** — rg command, results, errors, timing
+- **`[form]`** — field value changes
+- **`[preview]`** — syntax highlighting, file display
+- **`[tree]`** — directory tree toggle/rebuild
+- **`[events]`** — event bus emissions
+- **`[history]`** — save/load/compact
+- **`[views/search]`** — open, history commit, history navigation
+- **`[views/context]`** — context popup open, action execution
+- **`[backend/rg]`** — generic rg backend timing
+
+Timing traces (with `(NNms)` or `(N.NNs)` suffix) are on all slow paths:
+search execution, syntax highlighting, tree rebuild, history loading, and
+panel creation.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `:SkyRGLog` | Open the log file in a split |
+| `:SkyRGLogClear` | Clear the log file |

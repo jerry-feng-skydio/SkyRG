@@ -36,6 +36,7 @@ function! skyrg#views#search#open(...) abort
       let l:params = l:last
     endif
   endif
+  call skyrg#panel#set_opening_via_view()
   call skyrg#panel#open(l:params)
   call skyrg#log#info('views/search', 'open')
   " Reset history navigation state
