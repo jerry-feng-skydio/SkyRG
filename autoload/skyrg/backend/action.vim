@@ -263,24 +263,23 @@ function! s:followup_popup(task, actions, ctx) abort
   let l:icon = a:task.exit_code == 0 ? '✓' : '✗'
   let l:title = printf(' %s %s ', l:icon, a:task.title)
 
-  let l:lines = []
-  for l:i in range(len(a:actions))
-    let l:a = a:actions[l:i]
-    let l:key_str = has_key(l:a, 'key') ? '['.l:a.key.'] ' : '    '
-    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(a:ctx) : l:a.name
-    call add(l:lines, '  ' . l:key_str . l:label)
-  endfor
-
-  let l:max_w = 0
-  for l:l in l:lines
-    if len(l:l) > l:max_w | let l:max_w = len(l:l) | endif
-  endfor
-  let l:max_w = max([l:max_w + 4, len(l:title) + 4])
-
   let s:followup_actions = a:actions
   let s:followup_ctx = a:ctx
+  let s:followup_selected = 0
 
-  let l:popup = popup_create(l:lines, {
+  let l:lines = s:followup_render()
+
+  let l:max_w = 0
+  for l:a in a:actions
+    let l:key_str = has_key(l:a, 'key') ? '['.l:a.key.'] ' : '    '
+    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(a:ctx) : l:a.name
+    let l:w = len(l:key_str) + len(l:label) + 6
+    if l:w > l:max_w | let l:max_w = l:w | endif
+  endfor
+  let l:max_w = max([l:max_w, len(l:title) + 4])
+
+  call skyrg#ui#style#init()
+  let s:followup_popup_id = popup_create(l:lines, {
     \ 'title': l:title,
     \ 'border': [1,1,1,1],
     \ 'borderchars': ['─','│','─','│','╭','╮','╯','╰'],
@@ -296,32 +295,72 @@ endfunction
 
 let s:followup_actions = []
 let s:followup_ctx = {}
+let s:followup_selected = 0
+let s:followup_popup_id = 0
+
+function! s:followup_render() abort
+  let l:lines = []
+  for l:i in range(len(s:followup_actions))
+    let l:a = s:followup_actions[l:i]
+    let l:key_str = has_key(l:a, 'key') ? '['.l:a.key.'] ' : '    '
+    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(s:followup_ctx) : l:a.name
+    let l:text = '  ' . l:key_str . l:label
+    if l:i == s:followup_selected
+      call add(l:lines, skyrg#ui#util#hl_line(l:text, 'skyrg_sel'))
+    else
+      call add(l:lines, {'text': l:text})
+    endif
+  endfor
+  return l:lines
+endfunction
 
 function! s:followup_key(winid, key) abort
   if a:key ==# "\<Esc>" || a:key ==# 'q'
     call popup_close(a:winid)
     return 1
   endif
-  " Match by key shortcut
+
+  " Navigate with j/k or arrows
+  if a:key ==# 'j' || a:key ==# "\<Down>"
+    let s:followup_selected = min([len(s:followup_actions) - 1, s:followup_selected + 1])
+    call popup_settext(a:winid, s:followup_render())
+    return 1
+  endif
+  if a:key ==# 'k' || a:key ==# "\<Up>"
+    let s:followup_selected = max([0, s:followup_selected - 1])
+    call popup_settext(a:winid, s:followup_render())
+    return 1
+  endif
+
+  " Enter: execute selected
+  if a:key ==# "\<CR>"
+    call s:followup_execute(a:winid, s:followup_actions[s:followup_selected])
+    return 1
+  endif
+
+  " Letter shortcut
   if len(a:key) == 1
     for l:a in s:followup_actions
       if get(l:a, 'key', '') ==# a:key
-        call popup_close(a:winid)
-        call skyrg#log#info('action', 'followup execute "%s"', l:a.name)
-        " Dismiss followups after executing (unless it's the dismiss action itself)
-        if l:a.name !=# 'Dismiss'
-          call skyrg#backend#tasks#dismiss_followups(s:followup_ctx.task_id)
-        endif
-        if has_key(l:a, 'execute')
-          call l:a.execute(s:followup_ctx)
-        elseif has_key(l:a, 'shell') || has_key(l:a, 'job')
-          call skyrg#backend#action#dispatch(l:a, s:followup_ctx)
-        endif
+        call s:followup_execute(a:winid, l:a)
         return 1
       endif
     endfor
   endif
   return 1
+endfunction
+
+function! s:followup_execute(winid, action) abort
+  call popup_close(a:winid)
+  call skyrg#log#info('action', 'followup execute "%s"', a:action.name)
+  if a:action.name !=# 'Dismiss'
+    call skyrg#backend#tasks#dismiss_followups(s:followup_ctx.task_id)
+  endif
+  if has_key(a:action, 'execute')
+    call a:action.execute(s:followup_ctx)
+  elseif has_key(a:action, 'shell') || has_key(a:action, 'job')
+    call skyrg#backend#action#dispatch(a:action, s:followup_ctx)
+  endif
 endfunction
 
 "==============================================================================
