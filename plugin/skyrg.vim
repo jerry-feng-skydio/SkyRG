@@ -34,9 +34,11 @@ command! -nargs=0 SkyRGFollowup      call skyrg#backend#action#show_latest_follo
 command! -nargs=0 SkyRGActionLog     call skyrg#views#tasks#open_last_log()
 command! -nargs=0 YRefs              call skyrg#panel#ycm_refs()
 command! -nargs=0 SkyRGReload        call skyrg#reload()
+command! -nargs=0 RevupTopics        call skyrg#revup#show()
 
 " Context popup key mapping (user sets g:skyrg_context_key in .vimrc)
 if exists('g:skyrg_context_key') && !empty(g:skyrg_context_key)
   execute 'nnoremap <silent>' g:skyrg_context_key ':call skyrg#views#context#open("n")<CR>'
   execute 'vnoremap <silent>' g:skyrg_context_key ':<C-u>call skyrg#views#context#open("v")<CR>'
 endif
+

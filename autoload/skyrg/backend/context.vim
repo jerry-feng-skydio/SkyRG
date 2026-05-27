@@ -162,5 +162,13 @@ function! s:ensure_builtins() abort
     \   'predicate': {ctx -> exists('*skyrg#views#history#open')},
     \   'execute': {ctx -> skyrg#views#history#open()},
     \ },
+    \ {
+    \   'name': 'Revup Topics',
+    \   'key': 'r',
+    \   'group': 'revup',
+    \   'priority': 70,
+    \   'predicate': {ctx -> ctx.filetype ==# 'gitcommit'},
+    \   'execute': {ctx -> skyrg#revup#show()},
+    \ },
     \ ])
 endfunction
