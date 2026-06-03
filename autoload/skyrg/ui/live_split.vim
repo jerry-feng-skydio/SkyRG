@@ -153,12 +153,15 @@ function! s:file_tick(id, timer) abort
   endif
   let l:cur_win = winnr()
   execute l:win . 'wincmd w'
-  let l:was_at_end = (line('.') >= line('$') - 1)
+  let l:prev_line = line('.')
+  let l:was_at_end = (l:prev_line >= line('$') - 1)
   let l:lines = readfile(l:s.path)
   silent! %delete _
   call setline(1, l:lines)
   if l:was_at_end
     normal! G
+  else
+    execute 'keepjumps normal!' min([l:prev_line, len(l:lines)]) . 'G'
   endif
   execute l:cur_win . 'wincmd w'
 endfunction
