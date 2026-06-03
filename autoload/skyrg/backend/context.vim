@@ -209,5 +209,12 @@ function! s:ensure_builtins() abort
     \   'priority': 89,
     \   'execute': {ctx -> skyrg#views#device#refresh(ctx)},
     \ },
+    \ {
+    \   'name': 'Instabug (dump screen to log)',
+    \   'key': '!',
+    \   'group': 'debug',
+    \   'priority': 99,
+    \   'execute': {ctx -> skyrg#instabug#dump()},
+    \ },
     \ ])
 endfunction

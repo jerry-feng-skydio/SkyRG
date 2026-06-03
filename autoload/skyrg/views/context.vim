@@ -137,8 +137,8 @@ function! s:on_key(winid, key) abort
     return 1
   endif
 
-  " Letter shortcut: find action by key
-  if len(a:key) == 1 && a:key =~# '[a-zA-Z]'
+  " Shortcut: find action by key
+  if len(a:key) == 1 && a:key =~# '[a-zA-Z!@#$%^&*]'
     for l:i in range(len(s:actions))
       if get(s:actions[l:i], 'key', '') ==# a:key
         let l:action = s:actions[l:i]
