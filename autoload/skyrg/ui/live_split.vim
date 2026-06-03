@@ -242,9 +242,10 @@ function! skyrg#ui#live_split#save_current() abort
     return
   endif
   let l:s = s:splits[l:id]
+  let l:dir = s:save_dir()
   let l:slug = substitute(tolower(l:s.title), '[^a-z0-9]\+', '-', 'g')
   let l:slug = substitute(l:slug, '-\+$', '', '')
-  let l:fname = printf('/tmp/skyrg-%s-%s.log', l:slug, strftime('%Y%m%d-%H%M%S'))
+  let l:fname = l:dir . '/' . printf('%s-%s.log', l:slug, strftime('%Y%m%d-%H%M%S'))
   let l:lines = getbufline(l:s.bufnr, 1, '$')
   call writefile(l:lines, l:fname)
   echo printf('[SkyRG] Saved %d lines → %s', len(l:lines), l:fname)
@@ -270,6 +271,16 @@ endfunction
 "==============================================================================
 " Internal helpers
 "==============================================================================
+
+function! s:save_dir() abort
+  let l:base = exists('$XDG_DATA_HOME') && !empty($XDG_DATA_HOME)
+    \ ? $XDG_DATA_HOME : expand('~/.local/share')
+  let l:dir = l:base . '/skyrg/saved'
+  if !isdirectory(l:dir)
+    call mkdir(l:dir, 'p')
+  endif
+  return l:dir
+endfunction
 
 function! s:cleanup_source(entry) abort
   if a:entry.timer
