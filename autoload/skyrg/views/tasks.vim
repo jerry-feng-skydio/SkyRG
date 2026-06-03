@@ -448,8 +448,10 @@ endfunction
 "==============================================================================
 
 " Open a log file in a styled scratch split, with optional auto-tail.
+" Full-width at bottom, height from g:skyrg_log_height (default 10).
 function! s:open_log_split(path, tail) abort
-  new
+  let l:height = get(g:, 'skyrg_log_height', 10)
+  execute 'botright ' . l:height . 'new'
   setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
   execute 'file' fnameescape('[SkyRG] ' . fnamemodify(a:path, ':t'))
   let l:lines = readfile(a:path)
