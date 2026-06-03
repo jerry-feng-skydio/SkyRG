@@ -18,6 +18,10 @@
 "   call skyrg#ui#live_split#close(id)       " close split + stop source
 "   call skyrg#ui#live_split#stop(id)        " stop source, keep split open
 "   call skyrg#ui#live_split#close_all()     " close everything
+"
+" Buffer keymaps (set automatically):
+"   w   — save buffer contents to a timestamped file in /tmp
+"   q   — close the split
 
 " { id: { bufnr, source, timer, job, path, ... } }
 let s:splits = {}
@@ -39,6 +43,8 @@ function! skyrg#ui#live_split#open(opts) abort
   setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
   execute 'file' fnameescape('[SkyRG] ' . l:title)
   call skyrg#ui#style#apply_log()
+  nnoremap <buffer> <silent> q :call skyrg#ui#live_split#close_current()<CR>
+  nnoremap <buffer> <silent> w :call skyrg#ui#live_split#save_current()<CR>
 
   let l:bufnr = bufnr('%')
   let l:entry = {
@@ -217,6 +223,43 @@ function! s:scroll_tick(id, timer) abort
     normal! G
   endif
   execute l:cur_win . 'wincmd w'
+endfunction
+
+"==============================================================================
+" Save buffer to file
+"==============================================================================
+
+" Save the current buffer's live_split contents to a timestamped file.
+function! skyrg#ui#live_split#save_current() abort
+  let l:id = s:id_for_bufnr(bufnr('%'))
+  if l:id == -1
+    echohl WarningMsg | echo '[SkyRG] Not a live split buffer' | echohl None
+    return
+  endif
+  let l:s = s:splits[l:id]
+  let l:slug = substitute(tolower(l:s.title), '[^a-z0-9]\+', '-', 'g')
+  let l:slug = substitute(l:slug, '-\+$', '', '')
+  let l:fname = printf('/tmp/skyrg-%s-%s.log', l:slug, strftime('%Y%m%d-%H%M%S'))
+  let l:lines = getbufline(l:s.bufnr, 1, '$')
+  call writefile(l:lines, l:fname)
+  echo printf('[SkyRG] Saved %d lines → %s', len(l:lines), l:fname)
+endfunction
+
+" Close the live_split under the cursor.
+function! skyrg#ui#live_split#close_current() abort
+  let l:id = s:id_for_bufnr(bufnr('%'))
+  if l:id == -1 | return | endif
+  call skyrg#ui#live_split#close(l:id)
+endfunction
+
+" Find split id by buffer number.
+function! s:id_for_bufnr(bufnr) abort
+  for [l:id, l:s] in items(s:splits)
+    if l:s.bufnr == a:bufnr
+      return l:id
+    endif
+  endfor
+  return -1
 endfunction
 
 "==============================================================================
