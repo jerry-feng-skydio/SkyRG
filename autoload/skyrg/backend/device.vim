@@ -152,6 +152,82 @@ function! s:on_probe_exit(host, Callback, job, exit_code) abort
 endfunction
 
 "==============================================================================
+" USB event watcher — auto-detect on plug/unplug
+"==============================================================================
+
+let s:usb_watch_job = v:null
+let s:usb_debounce_timer = 0
+
+" Start watching for USB events. Triggers device detection on plug/unplug.
+" Safe to call multiple times — only one watcher runs at a time.
+function! skyrg#backend#device#watch_usb() abort
+  if s:usb_watch_job != v:null && job_status(s:usb_watch_job) ==# 'run'
+    call skyrg#log#info('device', 'USB watcher already running')
+    return
+  endif
+  if !executable('udevadm')
+    call skyrg#log#warn('device', 'udevadm not found, USB watch unavailable')
+    return
+  endif
+  let s:usb_watch_job = job_start(
+    \ ['/bin/sh', '-c', 'stdbuf -oL udevadm monitor --subsystem-match=usb --property'],
+    \ {
+    \   'out_cb': function('s:on_usb_event'),
+    \   'err_cb': {ch, msg -> 0},
+    \   'exit_cb': function('s:on_usb_watch_exit'),
+    \   'out_mode': 'nl',
+    \ })
+  call skyrg#log#info('device', 'USB watcher started')
+endfunction
+
+" Stop watching for USB events.
+function! skyrg#backend#device#unwatch_usb() abort
+  if s:usb_watch_job != v:null && job_status(s:usb_watch_job) ==# 'run'
+    call job_stop(s:usb_watch_job)
+    let s:usb_watch_job = v:null
+    call skyrg#log#info('device', 'USB watcher stopped')
+  endif
+  if s:usb_debounce_timer
+    call timer_stop(s:usb_debounce_timer)
+    let s:usb_debounce_timer = 0
+  endif
+endfunction
+
+function! s:on_usb_event(ch, msg) abort
+  " udevadm emits many lines per event; debounce to a single detection.
+  " Only trigger on ACTION lines (add/remove/bind/unbind).
+  if a:msg !~# '^ACTION='
+    return
+  endif
+  call skyrg#log#info('device', 'USB event: %s', a:msg)
+  " Reset debounce timer — wait 2s after last event before probing
+  if s:usb_debounce_timer
+    call timer_stop(s:usb_debounce_timer)
+  endif
+  let s:usb_debounce_timer = timer_start(2000, function('s:on_usb_debounce'))
+endfunction
+
+function! s:on_usb_debounce(timer) abort
+  let s:usb_debounce_timer = 0
+  call skyrg#log#info('device', 'USB debounce fired, re-detecting devices')
+  call skyrg#backend#device#detect({vehicles -> s:on_usb_detect_done(vehicles)})
+endfunction
+
+function! s:on_usb_detect_done(vehicles) abort
+  let l:status = skyrg#backend#device#statusline()
+  if empty(l:status)
+    echom '[SkyRG] Devices: none detected'
+  else
+    echom printf('[SkyRG] Devices: %s', l:status)
+  endif
+endfunction
+
+function! s:on_usb_watch_exit(job, exit_code) abort
+  let s:usb_watch_job = v:null
+  call skyrg#log#info('device', 'USB watcher exited (%d)', a:exit_code)
+endfunction
+
+"==============================================================================
 " Vehicle grouping
 "==============================================================================
 
