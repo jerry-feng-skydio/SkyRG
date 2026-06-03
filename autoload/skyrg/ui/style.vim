@@ -69,10 +69,14 @@ endfunction
 
 " Apply log-viewer styling to the current buffer.
 function! skyrg#ui#style#apply_log() abort
-  setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
   setlocal nonumber norelativenumber signcolumn=no
   setlocal winfixheight
-  setlocal winhl=Normal:SkyRGLog
+  setlocal statusline=\ ⟳\ SkyRG\ Log\ %=%l/%L
+  " Syntax-based styling (Vim doesn't support per-window backgrounds)
+  syntax match SkyRGLogStdout /^\[stdout\].*/
   syntax match SkyRGLogStderrLine /^\[stderr\].*/
+  syntax match SkyRGLogHeader /^===.*===$\|^Task ID:.*\|^Action:.*\|^Command:.*\|^CWD:.*\|^Started:.*\|^Context:.*/
+  highlight link SkyRGLogStdout Comment
   highlight link SkyRGLogStderrLine SkyRGLogStderr
+  highlight link SkyRGLogHeader Title
 endfunction

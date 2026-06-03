@@ -28,12 +28,7 @@ function! skyrg#views#tasks#open_last_log() abort
   if !empty(l:all)
     let l:log = get(l:all[0], 'log_file', '')
     if !empty(l:log) && filereadable(l:log)
-      execute 'split' fnameescape(l:log)
-      call skyrg#ui#style#apply_log()
-      normal! G
-      if l:all[0].status ==# 'running'
-        call s:start_tail(l:log)
-      endif
+      call s:open_log_split(l:log, l:all[0].status ==# 'running')
       return
     endif
   endif
@@ -42,9 +37,7 @@ function! skyrg#views#tasks#open_last_log() abort
   if !empty(l:entries)
     let l:path = skyrg#backend#action_log#path(l:entries[0])
     if !empty(l:path) && filereadable(l:path)
-      execute 'split' fnameescape(l:path)
-      call skyrg#ui#style#apply_log()
-      normal! G
+      call s:open_log_split(l:path, 0)
       return
     endif
   endif
@@ -312,12 +305,7 @@ function! s:on_key(winid, key) abort
     let l:is_running = s:selected_is_running()
     if !empty(l:log) && filereadable(l:log)
       call s:close_popups()
-      execute 'split' fnameescape(l:log)
-      call skyrg#ui#style#apply_log()
-      normal! G
-      if l:is_running
-        call s:start_tail(l:log)
-      endif
+      call s:open_log_split(l:log, l:is_running)
     endif
     return 1
   endif
@@ -453,6 +441,24 @@ function! s:selected_is_running() abort
     return l:tasks[s:selected].status ==# 'running'
   endif
   return 0
+endfunction
+
+"==============================================================================
+" Log split helper
+"==============================================================================
+
+" Open a log file in a styled scratch split, with optional auto-tail.
+function! s:open_log_split(path, tail) abort
+  new
+  setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
+  execute 'file' fnameescape('[SkyRG] ' . fnamemodify(a:path, ':t'))
+  let l:lines = readfile(a:path)
+  call setline(1, l:lines)
+  call skyrg#ui#style#apply_log()
+  normal! G
+  if a:tail
+    call s:start_tail(a:path)
+  endif
 endfunction
 
 "==============================================================================
