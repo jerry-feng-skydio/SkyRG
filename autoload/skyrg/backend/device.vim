@@ -59,16 +59,16 @@ function! skyrg#backend#device#is_connected() abort
   return !empty(s:cached_vehicles)
 endfunction
 
-" Statusline-friendly string.  Returns '' when nothing is connected,
-" otherwise e.g. 'R47[NVU,QCU] C38[SOC]'.
+" Statusline-friendly string.
+"   No devices:  '[No Connected Devices]'
+"   One device:  '[🔗 C38]'
+"   Multiple:    '[🔗 R47 C38]'
 function! skyrg#backend#device#statusline() abort
-  if empty(s:cached_vehicles) | return '' | endif
-  let l:parts = []
-  for l:v in s:cached_vehicles
-    let l:boards = join(map(copy(l:v.boards), 'v:val.name'), ',')
-    call add(l:parts, l:v.type . '[' . l:boards . ']')
-  endfor
-  return join(l:parts, ' ')
+  if empty(s:cached_vehicles)
+    return '[No Connected Devices]'
+  endif
+  let l:types = map(copy(s:cached_vehicles), 'v:val.type')
+  return '[🔗 ' . join(l:types, ' ') . ']'
 endfunction
 
 " Start async detection. Callback receives the vehicle list when done.

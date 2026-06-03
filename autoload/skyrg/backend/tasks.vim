@@ -149,44 +149,59 @@ endfunction
 " Statusline component
 "==============================================================================
 
-" Returns a string for the statusline. Empty when no tasks are active.
+" Returns a string for the statusline showing running tasks with elapsed time,
+" awaiting followups, or recent completions.
 "
 " Examples:
-"   ''                                  — no tasks
-"   '⟳ Build firmware (12s)'           — one running task
-"   '⟳ 2 tasks running'               — multiple running
-"   '✓ Build firmware'                  — just completed (shows for 5s)
-"   '✗ Build firmware'                  — just failed (shows for 5s)
+"   ''
+"   '[Build firmware: 45s]'
+"   '[Build firmware: 2m 15s] [Deploy: 30s]'
+"   '[❗Build firmware (⌥f)]'
+"   '[✓ Build firmware] [✗ Lint]'
 function! skyrg#backend#tasks#statusline() abort
   let l:running = skyrg#backend#tasks#running()
   if !empty(l:running)
-    if len(l:running) == 1
-      let l:t = l:running[0]
+    let l:parts = []
+    for l:t in l:running
       let l:elapsed = localtime() - l:t.start_time
-      return printf(' ⟳ %s (%ds) ', l:t.title, l:elapsed)
-    else
-      return printf(' ⟳ %d tasks running ', len(l:running))
-    endif
+      call add(l:parts, printf('[%s: %s]', l:t.title, s:fmt_duration(l:elapsed)))
+    endfor
+    return join(l:parts, ' ')
   endif
 
   " Show awaiting tasks (highest priority after running)
   let l:awaiting = skyrg#backend#tasks#awaiting()
   if !empty(l:awaiting)
     let l:t = l:awaiting[0]
-    return printf(' ❗%s (<Leader>f) ', l:t.title)
+    return printf('[❗%s (<Leader>f)]', l:t.title)
   endif
 
-  " Show most recent completion for 5 seconds
+  " Show most recent completions for 5 seconds
   let l:now = localtime()
+  let l:parts = []
   for l:t in values(s:tasks)
     if l:t.status !=# 'running' && l:t.status !=# 'awaiting'
       \ && l:t.end_time > 0 && (l:now - l:t.end_time) < 5
       let l:icon = l:t.status ==# 'done' ? '✓' : '✗'
-      return printf(' %s %s ', l:icon, l:t.title)
+      call add(l:parts, printf('[%s %s]', l:icon, l:t.title))
     endif
   endfor
+  return join(l:parts, ' ')
+endfunction
 
-  return ''
+" Format seconds into human-readable duration: 45s, 2m 15s, 1h 3m
+function! s:fmt_duration(secs) abort
+  if a:secs < 60
+    return printf('%ds', a:secs)
+  elseif a:secs < 3600
+    let l:m = a:secs / 60
+    let l:s = a:secs % 60
+    return l:s > 0 ? printf('%dm %ds', l:m, l:s) : printf('%dm', l:m)
+  else
+    let l:h = a:secs / 3600
+    let l:m = (a:secs % 3600) / 60
+    return l:m > 0 ? printf('%dh %dm', l:h, l:m) : printf('%dh', l:h)
+  endif
 endfunction
 
 "==============================================================================
