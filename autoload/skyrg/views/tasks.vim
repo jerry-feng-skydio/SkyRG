@@ -444,153 +444,43 @@ function! s:selected_is_running() abort
 endfunction
 
 "==============================================================================
-" Log split helper
+" Log split helper — delegates to skyrg#ui#live_split
 "==============================================================================
 
-" Open a log file in a styled scratch split, with optional auto-tail.
-" Full-width at bottom, height from g:skyrg_log_height (default 10).
 function! s:open_log_split(path, tail) abort
-  let l:height = get(g:, 'skyrg_log_height', 10)
-  execute 'botright ' . l:height . 'new'
-  setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
-  execute 'file' fnameescape('[SkyRG] ' . fnamemodify(a:path, ':t'))
-  let l:lines = readfile(a:path)
-  call setline(1, l:lines)
-  call skyrg#ui#style#apply_log()
-  normal! G
-  if a:tail
-    call s:start_tail(a:path)
-  endif
+  call skyrg#ui#live_split#open({
+    \ 'title': fnamemodify(a:path, ':t'),
+    \ 'source': 'file',
+    \ 'path': a:path,
+    \ })
 endfunction
 
 "==============================================================================
 " Monitor — public API for auto-opening log splits from action.vim
 "==============================================================================
 
-" { task_id: { 'bufnr': N, 'timer': N, 'log': path } }
+" { task_id: live_split_id }
 let s:monitors = {}
 
-" Open a monitor split for a task (called from action.vim on job start).
 function! skyrg#views#tasks#open_monitor(log_path, task_id) abort
-  let l:height = get(g:, 'skyrg_log_height', 10)
-  execute 'botright ' . l:height . 'new'
-  setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
-  execute 'file' fnameescape('[SkyRG] ' . fnamemodify(a:log_path, ':t'))
-  let l:lines = readfile(a:log_path)
-  call setline(1, l:lines)
-  call skyrg#ui#style#apply_log()
-  normal! G
-  let l:bufnr = bufnr('%')
-  let l:timer = timer_start(1000, function('s:monitor_tick', [a:task_id]), {'repeat': -1})
-  let s:monitors[a:task_id] = {'bufnr': l:bufnr, 'timer': l:timer, 'log': a:log_path}
+  let l:id = skyrg#ui#live_split#open({
+    \ 'title': fnamemodify(a:log_path, ':t'),
+    \ 'source': 'file',
+    \ 'path': a:log_path,
+    \ })
+  let s:monitors[a:task_id] = l:id
 endfunction
 
-" Close a monitor split and stop its tail timer.
 function! skyrg#views#tasks#close_monitor(task_id) abort
-  let l:m = get(s:monitors, a:task_id, {})
-  if empty(l:m) | return | endif
-  call timer_stop(l:m.timer)
-  if bufexists(l:m.bufnr)
-    let l:win = bufwinnr(l:m.bufnr)
-    if l:win != -1
-      execute l:win . 'wincmd w'
-      silent! close
-    endif
-    silent! execute 'bwipeout' l:m.bufnr
-  endif
+  let l:id = get(s:monitors, a:task_id, -1)
+  if l:id == -1 | return | endif
+  call skyrg#ui#live_split#close(l:id)
   call remove(s:monitors, a:task_id)
 endfunction
 
-" Stop tailing but keep the split open (e.g. on failure).
 function! skyrg#views#tasks#stop_monitor_tail(task_id) abort
-  let l:m = get(s:monitors, a:task_id, {})
-  if empty(l:m) | return | endif
-  call timer_stop(l:m.timer)
-  " Do one final refresh so the split has the latest output
-  if bufexists(l:m.bufnr) && filereadable(l:m.log)
-    let l:win = bufwinnr(l:m.bufnr)
-    if l:win != -1
-      let l:cur_win = winnr()
-      execute l:win . 'wincmd w'
-      let l:lines = readfile(l:m.log)
-      silent! %delete _
-      call setline(1, l:lines)
-      normal! G
-      execute l:cur_win . 'wincmd w'
-    endif
-  endif
+  let l:id = get(s:monitors, a:task_id, -1)
+  if l:id == -1 | return | endif
+  call skyrg#ui#live_split#stop(l:id)
   call remove(s:monitors, a:task_id)
-endfunction
-
-function! s:monitor_tick(task_id, timer) abort
-  let l:m = get(s:monitors, a:task_id, {})
-  if empty(l:m) || !bufexists(l:m.bufnr) || !filereadable(l:m.log)
-    call timer_stop(a:timer)
-    if has_key(s:monitors, a:task_id)
-      call remove(s:monitors, a:task_id)
-    endif
-    return
-  endif
-  let l:cur_win = winnr()
-  let l:tail_win = bufwinnr(l:m.bufnr)
-  if l:tail_win == -1
-    call timer_stop(a:timer)
-    call remove(s:monitors, a:task_id)
-    return
-  endif
-  execute l:tail_win . 'wincmd w'
-  let l:was_at_end = (line('.') >= line('$') - 1)
-  let l:lines = readfile(l:m.log)
-  silent! %delete _
-  call setline(1, l:lines)
-  if l:was_at_end
-    normal! G
-  endif
-  execute l:cur_win . 'wincmd w'
-endfunction
-
-"==============================================================================
-" Auto-tail — for manually opened log splits
-"==============================================================================
-
-let s:tail_timer = 0
-let s:tail_log = ''
-let s:tail_bufnr = 0
-
-function! s:start_tail(log_path) abort
-  call s:stop_tail()
-  let s:tail_log = a:log_path
-  let s:tail_bufnr = bufnr('%')
-  let s:tail_timer = timer_start(1000, function('s:tail_tick'), {'repeat': -1})
-endfunction
-
-function! s:tail_tick(timer) abort
-  if !bufexists(s:tail_bufnr) || !filereadable(s:tail_log)
-    call s:stop_tail()
-    return
-  endif
-  let l:cur_win = winnr()
-  let l:tail_win = bufwinnr(s:tail_bufnr)
-  if l:tail_win == -1
-    call s:stop_tail()
-    return
-  endif
-  execute l:tail_win . 'wincmd w'
-  let l:was_at_end = (line('.') >= line('$') - 1)
-  let l:lines = readfile(s:tail_log)
-  silent! %delete _
-  call setline(1, l:lines)
-  if l:was_at_end
-    normal! G
-  endif
-  execute l:cur_win . 'wincmd w'
-endfunction
-
-function! s:stop_tail() abort
-  if s:tail_timer
-    call timer_stop(s:tail_timer)
-    let s:tail_timer = 0
-  endif
-  let s:tail_log = ''
-  let s:tail_bufnr = 0
 endfunction

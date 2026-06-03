@@ -180,11 +180,11 @@ function! s:do_tail_vehicle(vehicle) abort
 endfunction
 
 function! s:do_tail_c38(board) abort
-  call skyrg#backend#action#dispatch({
-    \ 'name': 'logcat (ucon)',
-    \ 'job': printf('ssh %s logcat | grep --line-buffered ucon', a:board.host),
-    \ 'job_opts': {'interactive': 1, 'title': 'C38 logcat | grep ucon'},
-    \ }, {})
+  call skyrg#ui#live_split#open({
+    \ 'title': 'C38 logcat | grep ucon',
+    \ 'source': 'job',
+    \ 'cmd': printf('ssh %s logcat | grep --line-buffered ucon', a:board.host),
+    \ })
 endfunction
 
 function! s:do_tail_r47_board(board) abort
@@ -245,11 +245,11 @@ function! s:on_runmode_picked(board, item) abort
 endfunction
 
 function! s:on_logfile_picked(board, item) abort
-  call skyrg#backend#action#dispatch({
-    \ 'name': 'tail ' . fnamemodify(a:item.value, ':t'),
-    \ 'job': printf('ssh %s tail -f %s', a:board.host, shellescape(a:item.value)),
-    \ 'job_opts': {'interactive': 1, 'title': 'tail ' . a:item.label},
-    \ }, {})
+  call skyrg#ui#live_split#open({
+    \ 'title': a:board.name . ': ' . a:item.label,
+    \ 'source': 'job',
+    \ 'cmd': printf('ssh %s tail -f %s', a:board.host, shellescape(a:item.value)),
+    \ })
 endfunction
 
 " View a remote file via Vim's built-in scp:// netrw support.
