@@ -160,7 +160,7 @@ endfunction
 
 function! s:do_tail_vehicle(vehicle) abort
   if a:vehicle.type ==# 'C38'
-    " C38: logcat | grep ucon — pick SOC board if available
+    " C38: pick a logcat filter, then tail on SOC board
     let l:soc = {}
     for l:b in a:vehicle.boards
       if l:b.name ==# 'SOC'
@@ -171,7 +171,10 @@ function! s:do_tail_vehicle(vehicle) abort
     if empty(l:soc)
       let l:soc = a:vehicle.boards[0]
     endif
-    call s:do_tail_c38(l:soc)
+    call s:show_picker('C38 — Tail', [
+      \ {'label': 'Tail ucon',         'value': 'ucon'},
+      \ {'label': 'Tail AVC denials',  'value': 'avc'},
+      \ ], function('s:on_c38_tail_picked', [l:soc]))
     return
   endif
 
@@ -179,11 +182,17 @@ function! s:do_tail_vehicle(vehicle) abort
   call skyrg#views#device#pick_board(a:vehicle, function('s:do_tail_r47_board'))
 endfunction
 
-function! s:do_tail_c38(board) abort
+let s:c38_tail_filters = {
+  \ 'ucon': {'title': 'C38 tail ucon',         'grep': 'ucon'},
+  \ 'avc':  {'title': 'C38 tail AVC denials',  'grep': 'avc: denied'},
+  \ }
+
+function! s:on_c38_tail_picked(board, item) abort
+  let l:f = s:c38_tail_filters[a:item.value]
   call skyrg#ui#live_split#open({
-    \ 'title': 'C38 logcat | grep ucon',
+    \ 'title': l:f.title,
     \ 'source': 'job',
-    \ 'cmd': printf('ssh %s logcat | grep --line-buffered ucon', a:board.host),
+    \ 'cmd': printf('ssh %s logcat | grep --line-buffered "%s"', a:board.host, l:f.grep),
     \ })
 endfunction
 
