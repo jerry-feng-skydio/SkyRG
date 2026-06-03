@@ -131,6 +131,7 @@ function! s:run_interactive(action, ctx) abort
     \ 'term_name': '[SkyRG] ' . l:title,
     \ 'exit_cb': function('s:on_term_exit', [l:task_id]),
     \ 'term_finish': 'close',
+    \ 'curwin': 1,
     \ }
 
   if !empty(l:cwd) && isdirectory(l:cwd)

@@ -35,6 +35,7 @@ command! -nargs=0 SkyRGActionLog     call skyrg#views#tasks#open_last_log()
 command! -nargs=0 YRefs              call skyrg#panel#ycm_refs()
 command! -nargs=0 SkyRGReload        call skyrg#reload()
 command! -nargs=0 RevupTopics        call skyrg#revup#show()
+command! -nargs=0 SkyRGDevice         call skyrg#views#device#refresh({})
 
 " Context popup key mapping (user sets g:skyrg_context_key in .vimrc)
 if exists('g:skyrg_context_key') && !empty(g:skyrg_context_key)

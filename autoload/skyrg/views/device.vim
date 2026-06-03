@@ -1,0 +1,398 @@
+" autoload/skyrg/views/device.vim — Device interaction popups
+"
+" Provides sub-menus for board selection, log browsing, and device actions.
+" Called from context actions registered in backend/context.vim.
+"
+" Flow:
+"   detect → vehicle picker (if >1) → action → board picker (if >1) → execute
+
+let s:popup_id = 0
+let s:items = []
+let s:selected = 0
+let s:on_select = v:null   " funcref called with selected item
+
+"==============================================================================
+" Generic picker popup
+"==============================================================================
+
+" Show a picker popup.  items = [{'label': '...', 'value': ...}, ...]
+" on_select = {item -> ...} called when user picks one.
+function! s:show_picker(title, items, On_select) abort
+  if empty(a:items)
+    echohl WarningMsg | echo '[SkyRG] No items to pick' | echohl None
+    return
+  endif
+
+  " Single item — skip popup
+  if len(a:items) == 1
+    call a:On_select(a:items[0])
+    return
+  endif
+
+  let s:items = a:items
+  let s:on_select = a:On_select
+  let s:selected = 0
+
+  let l:lines = s:render_picker()
+  let l:max_w = 0
+  for l:item in a:items
+    let l:w = len(l:item.label) + 4
+    if l:w > l:max_w | let l:max_w = l:w | endif
+  endfor
+
+  if s:popup_id | silent! call popup_close(s:popup_id) | endif
+  call skyrg#ui#style#init()
+  let s:popup_id = popup_create(l:lines, {
+    \ 'line': 'cursor+1',
+    \ 'col': 'cursor',
+    \ 'pos': 'topleft',
+    \ 'width': l:max_w,
+    \ 'padding': [0, 1, 0, 1],
+    \ 'border': [1, 1, 1, 1],
+    \ 'borderchars': ['─', '│', '─', '│', '╭', '╮', '╯', '╰'],
+    \ 'borderhighlight': ['Title'],
+    \ 'highlight': 'Normal',
+    \ 'title': ' ' . a:title . ' ',
+    \ 'filter': function('s:picker_key'),
+    \ 'mapping': 0,
+    \ 'callback': function('s:picker_close'),
+    \ 'zindex': 310,
+    \ })
+endfunction
+
+function! s:render_picker() abort
+  let l:lines = []
+  for l:i in range(len(s:items))
+    let l:text = '  ' . s:items[l:i].label
+    if l:i == s:selected
+      call add(l:lines, skyrg#ui#util#hl_line(l:text, 'skyrg_sel'))
+    else
+      call add(l:lines, {'text': l:text})
+    endif
+  endfor
+  return l:lines
+endfunction
+
+function! s:picker_key(winid, key) abort
+  if a:key ==# "\<Esc>" || a:key ==# "\<C-c>"
+    call popup_close(a:winid)
+    return 1
+  endif
+  if a:key ==# "\<Up>" || a:key ==# 'k'
+    let s:selected = max([0, s:selected - 1])
+    call popup_settext(a:winid, s:render_picker())
+    return 1
+  endif
+  if a:key ==# "\<Down>" || a:key ==# 'j'
+    let s:selected = min([len(s:items) - 1, s:selected + 1])
+    call popup_settext(a:winid, s:render_picker())
+    return 1
+  endif
+  if a:key ==# "\<CR>"
+    let l:item = s:items[s:selected]
+    call popup_close(a:winid)
+    call s:on_select(l:item)
+    return 1
+  endif
+  return 1
+endfunction
+
+function! s:picker_close(id, result) abort
+  let s:popup_id = 0
+endfunction
+
+"==============================================================================
+" Board picker — choose a board from a detected vehicle
+"==============================================================================
+
+" Pick a board, then call Callback({'name': 'NVU', 'host': 'nvu'}).
+" If only one board, skip the picker.
+function! skyrg#views#device#pick_board(vehicle, Callback) abort
+  let l:items = []
+  for l:b in a:vehicle.boards
+    call add(l:items, {
+      \ 'label': printf('%s  (%s)', l:b.name, l:b.host),
+      \ 'value': l:b,
+      \ })
+  endfor
+  call s:show_picker(a:vehicle.type . ' — Select Board', l:items,
+    \ {item -> a:Callback(item.value)})
+endfunction
+
+"==============================================================================
+" Vehicle picker — choose a vehicle if multiple detected
+"==============================================================================
+
+function! skyrg#views#device#pick_vehicle(vehicles, Callback) abort
+  let l:items = []
+  for l:v in a:vehicles
+    let l:board_names = join(map(copy(l:v.boards), 'v:val.name'), ', ')
+    call add(l:items, {
+      \ 'label': printf('%s  [%s]', l:v.type, l:board_names),
+      \ 'value': l:v,
+      \ })
+  endfor
+  call s:show_picker('Select Vehicle', l:items,
+    \ {item -> a:Callback(item.value)})
+endfunction
+
+"==============================================================================
+" High-level device actions
+"==============================================================================
+
+" Open an interactive SSH shell to a device board.
+function! skyrg#views#device#ssh(ctx) abort
+  call s:with_board(a:ctx, function('s:do_ssh'))
+endfunction
+
+function! s:do_ssh(board) abort
+  call skyrg#backend#action#dispatch({
+    \ 'name': 'SSH ' . a:board.name,
+    \ 'job': 'ssh ' . a:board.host,
+    \ 'job_opts': {'interactive': 1, 'title': 'SSH ' . a:board.host},
+    \ }, {})
+endfunction
+
+" Tail logs on a device board.
+function! skyrg#views#device#tail_logs(ctx) abort
+  call s:with_vehicle(a:ctx, function('s:do_tail_vehicle'))
+endfunction
+
+function! s:do_tail_vehicle(vehicle) abort
+  if a:vehicle.type ==# 'C38'
+    " C38: logcat | grep ucon — pick SOC board if available
+    let l:soc = {}
+    for l:b in a:vehicle.boards
+      if l:b.name ==# 'SOC'
+        let l:soc = l:b
+        break
+      endif
+    endfor
+    if empty(l:soc)
+      let l:soc = a:vehicle.boards[0]
+    endif
+    call s:do_tail_c38(l:soc)
+    return
+  endif
+
+  " R47 and others: pick board, then browse logs
+  call skyrg#views#device#pick_board(a:vehicle, function('s:do_tail_r47_board'))
+endfunction
+
+function! s:do_tail_c38(board) abort
+  call skyrg#backend#action#dispatch({
+    \ 'name': 'logcat (ucon)',
+    \ 'job': printf('ssh %s logcat | grep --line-buffered ucon', a:board.host),
+    \ 'job_opts': {'interactive': 1, 'title': 'C38 logcat | grep ucon'},
+    \ }, {})
+endfunction
+
+function! s:do_tail_r47_board(board) abort
+  " List runmode directories, then pick one
+  let l:host = a:board.host
+  call skyrg#log#info('views/device', 'listing runmode dirs on %s', l:host)
+  let l:cmd = printf(
+    \ 'ssh -o ConnectTimeout=2 -o BatchMode=yes %s ls /home/skydio/semi_persistent/process_logs/latest/',
+    \ l:host)
+  let l:output = system(l:cmd)
+  if v:shell_error
+    echohl ErrorMsg
+    echo printf('[SkyRG] Failed to list logs on %s (exit %d)', l:host, v:shell_error)
+    echohl None
+    return
+  endif
+
+  let l:dirs = filter(split(l:output, "\n"), '!empty(v:val)')
+  if empty(l:dirs)
+    echohl WarningMsg | echo '[SkyRG] No runmode directories found' | echohl None
+    return
+  endif
+
+  let l:items = []
+  for l:d in l:dirs
+    call add(l:items, {'label': l:d, 'value': l:d})
+  endfor
+  call s:show_picker(a:board.name . ' — Runmode', l:items,
+    \ function('s:on_runmode_picked', [a:board]))
+endfunction
+
+function! s:on_runmode_picked(board, item) abort
+  " List log files in the chosen runmode dir
+  let l:dir = '/home/skydio/semi_persistent/process_logs/latest/' . a:item.value
+  let l:cmd = printf(
+    \ 'ssh -o ConnectTimeout=2 -o BatchMode=yes %s ls %s',
+    \ a:board.host, shellescape(l:dir))
+  let l:output = system(l:cmd)
+  if v:shell_error
+    echohl ErrorMsg
+    echo printf('[SkyRG] Failed to list files in %s', l:dir)
+    echohl None
+    return
+  endif
+
+  let l:files = filter(split(l:output, "\n"), '!empty(v:val)')
+  if empty(l:files)
+    echohl WarningMsg | echo '[SkyRG] No log files found' | echohl None
+    return
+  endif
+
+  let l:items = []
+  for l:f in l:files
+    call add(l:items, {'label': l:f, 'value': l:dir . '/' . l:f})
+  endfor
+  call s:show_picker(a:board.name . ' — Log File', l:items,
+    \ function('s:on_logfile_picked', [a:board]))
+endfunction
+
+function! s:on_logfile_picked(board, item) abort
+  call skyrg#backend#action#dispatch({
+    \ 'name': 'tail ' . fnamemodify(a:item.value, ':t'),
+    \ 'job': printf('ssh %s tail -f %s', a:board.host, shellescape(a:item.value)),
+    \ 'job_opts': {'interactive': 1, 'title': 'tail ' . a:item.label},
+    \ }, {})
+endfunction
+
+" View a remote file via Vim's built-in scp:// netrw support.
+function! skyrg#views#device#view_file(ctx) abort
+  call s:with_board(a:ctx, function('s:do_view_file'))
+endfunction
+
+function! s:do_view_file(board) abort
+  " List hot paths, or let user type a path
+  let l:hot_paths = s:get_hot_paths(a:board)
+  if empty(l:hot_paths)
+    " Fallback: prompt for path
+    let l:path = input('[SkyRG] Remote path: ')
+    if empty(l:path) | return | endif
+    execute 'edit scp://' . a:board.host . '/' . l:path
+    return
+  endif
+
+  let l:items = []
+  for l:hp in l:hot_paths
+    call add(l:items, {'label': l:hp.label, 'value': l:hp.path})
+  endfor
+  call s:show_picker(a:board.name . ' — Remote File', l:items,
+    \ function('s:on_hot_path_picked', [a:board]))
+endfunction
+
+function! s:on_hot_path_picked(board, item) abort
+  execute 'edit scp://' . a:board.host . '/' . a:item.value
+endfunction
+
+function! s:get_hot_paths(board) abort
+  " Check user-defined hot paths first
+  let l:user_paths = get(g:, 'skyrg_device_hot_paths', {})
+  " Try board name, then fall through to defaults
+  if has_key(l:user_paths, a:board.name)
+    return l:user_paths[a:board.name]
+  endif
+  " Defaults
+  return [
+    \ {'label': 'process_logs/latest/', 'path': '/home/skydio/semi_persistent/process_logs/latest/'},
+    \ {'label': 'crash_reports/',       'path': '/home/skydio/semi_persistent/crash_reports/'},
+    \ ]
+endfunction
+
+" Build flashpack — runs in aircam repo.
+function! skyrg#views#device#build_flashpack(ctx) abort
+  call s:with_vehicle(a:ctx, function('s:do_build_flashpack'))
+endfunction
+
+function! s:do_build_flashpack(vehicle) abort
+  let l:platform = s:vehicle_to_platform(a:vehicle.type)
+  let l:cmd = printf('./skybuild --platform=%s CreateFlashPack', l:platform)
+
+  " Let user edit the command before running
+  let l:cmd = input('[SkyRG] Build command: ', l:cmd)
+  if empty(l:cmd) | return | endif
+
+  " Determine aircam root
+  let l:aircam = s:find_aircam_root()
+  if empty(l:aircam)
+    echohl ErrorMsg | echo '[SkyRG] Cannot find aircam root' | echohl None
+    return
+  endif
+
+  call skyrg#backend#action#dispatch({
+    \ 'name': 'Build flashpack (' . a:vehicle.type . ')',
+    \ 'job': l:cmd,
+    \ 'job_opts': {
+    \   'interactive': 1,
+    \   'title': 'Build ' . a:vehicle.type . ' flashpack',
+    \   'cwd': l:aircam,
+    \ },
+    \ }, {})
+endfunction
+
+function! s:vehicle_to_platform(vtype) abort
+  let l:map = get(g:, 'skyrg_device_platforms', {
+    \ 'R47': 'r47',
+    \ 'C38': 'c38',
+    \ })
+  return get(l:map, a:vtype, tolower(a:vtype))
+endfunction
+
+function! s:find_aircam_root() abort
+  " Check common paths
+  for l:p in [expand('~/aircam'), '/home/skydio/aircam']
+    if isdirectory(l:p)
+      return l:p
+    endif
+  endfor
+  " Fall back to cwd if it looks like aircam
+  if filereadable(getcwd() . '/skybuild')
+    return getcwd()
+  endif
+  return ''
+endfunction
+
+" Refresh device detection — re-probe and report.
+function! skyrg#views#device#refresh(ctx) abort
+  echo '[SkyRG] Probing devices...'
+  call skyrg#backend#device#refresh(function('s:on_refresh_done'))
+endfunction
+
+function! s:on_refresh_done(vehicles) abort
+  if empty(a:vehicles)
+    echohl WarningMsg | echo '[SkyRG] No devices detected' | echohl None
+  else
+    let l:names = join(map(copy(a:vehicles), {_, v ->
+      \ v.type . ' [' . join(map(copy(v.boards), 'v:val.name'), ', ') . ']'}), ', ')
+    echo '[SkyRG] Detected: ' . l:names
+  endif
+endfunction
+
+"==============================================================================
+" Helpers — resolve vehicle/board from cache with pickers
+"==============================================================================
+
+" Resolve a vehicle from cache, showing picker if needed, then call Callback.
+function! s:with_vehicle(ctx, Callback) abort
+  let l:vehicles = skyrg#backend#device#cached()
+  if empty(l:vehicles)
+    " Try detecting first
+    echo '[SkyRG] Probing devices...'
+    call skyrg#backend#device#detect(
+      \ function('s:with_vehicle_after_detect', [a:Callback]))
+    return
+  endif
+  call skyrg#views#device#pick_vehicle(l:vehicles, a:Callback)
+endfunction
+
+function! s:with_vehicle_after_detect(Callback, vehicles) abort
+  if empty(a:vehicles)
+    echohl WarningMsg | echo '[SkyRG] No devices detected' | echohl None
+    return
+  endif
+  call skyrg#views#device#pick_vehicle(a:vehicles, a:Callback)
+endfunction
+
+" Resolve a board: pick vehicle if needed, then pick board.
+function! s:with_board(ctx, Callback) abort
+  call s:with_vehicle(a:ctx, function('s:with_board_pick', [a:Callback]))
+endfunction
+
+function! s:with_board_pick(Callback, vehicle) abort
+  call skyrg#views#device#pick_board(a:vehicle, a:Callback)
+endfunction
