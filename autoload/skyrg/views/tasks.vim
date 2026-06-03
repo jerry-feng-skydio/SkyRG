@@ -492,10 +492,13 @@ function! s:tail_tick(timer) abort
     return
   endif
   execute l:tail_win . 'wincmd w'
+  let l:was_at_end = (line('.') >= line('$') - 1)
   let l:lines = readfile(s:tail_log)
   silent! %delete _
   call setline(1, l:lines)
-  normal! G
+  if l:was_at_end
+    normal! G
+  endif
   execute l:cur_win . 'wincmd w'
 endfunction
 
