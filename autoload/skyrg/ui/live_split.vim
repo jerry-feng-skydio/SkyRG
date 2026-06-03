@@ -45,6 +45,7 @@ function! skyrg#ui#live_split#open(opts) abort
   call skyrg#ui#style#apply_log()
   nnoremap <buffer> <silent> q :call skyrg#ui#live_split#close_current()<CR>
   nnoremap <buffer> <silent> w :call skyrg#ui#live_split#save_current()<CR>
+  nnoremap <buffer> <silent> y :call skyrg#ui#live_split#yank_current()<CR>
 
   let l:bufnr = bufnr('%')
   let l:entry = {
@@ -260,6 +261,19 @@ function! skyrg#ui#live_split#save_current() abort
   call skyrg#backend#tasks#complete(l:task_id, 0)
 
   echo printf('[SkyRG] Saved %d lines → %s', len(l:lines), l:fname)
+endfunction
+
+" Copy the current buffer's live_split contents to the system clipboard.
+function! skyrg#ui#live_split#yank_current() abort
+  let l:id = s:id_for_bufnr(bufnr('%'))
+  if l:id == -1
+    echohl WarningMsg | echo '[SkyRG] Not a live split buffer' | echohl None
+    return
+  endif
+  let l:s = s:splits[l:id]
+  let l:lines = getbufline(l:s.bufnr, 1, '$')
+  let @+ = join(l:lines, "\n")
+  echo printf('[SkyRG] Copied %d lines to clipboard', len(l:lines))
 endfunction
 
 " Close the live_split under the cursor.

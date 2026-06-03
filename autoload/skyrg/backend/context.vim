@@ -225,6 +225,14 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#ui#live_split#save_current()},
     \ },
     \ {
+    \   'name': 'Copy log to clipboard',
+    \   'key': 'y',
+    \   'group': 'live_split',
+    \   'priority': 91,
+    \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'execute': {ctx -> skyrg#ui#live_split#yank_current()},
+    \ },
+    \ {
     \   'name': 'Close live split',
     \   'key': 'q',
     \   'group': 'live_split',
