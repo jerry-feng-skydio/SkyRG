@@ -12,6 +12,8 @@
 " Highlight group definitions
 "==============================================================================
 highlight SkyRGSel cterm=bold ctermfg=Yellow ctermbg=DarkBlue gui=bold guifg=#FFD700 guibg=#1C3A5F
+highlight SkyRGLog ctermbg=Black ctermfg=Gray guibg=#0A0A0A guifg=#A0A0A0
+highlight SkyRGLogStderr ctermbg=Black ctermfg=Red guibg=#0A0A0A guifg=#CC6666
 
 "==============================================================================
 " Prop type name constants — use these instead of string literals
@@ -63,4 +65,14 @@ endfunction
 " Return the list of syntax group names (used by preview.vim)
 function! skyrg#ui#style#syn_groups() abort
   return s:syn_groups
+endfunction
+
+" Apply log-viewer styling to the current buffer.
+function! skyrg#ui#style#apply_log() abort
+  setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
+  setlocal nonumber norelativenumber signcolumn=no
+  setlocal winfixheight
+  setlocal winhl=Normal:SkyRGLog
+  syntax match SkyRGLogStderrLine /^\[stderr\].*/
+  highlight link SkyRGLogStderrLine SkyRGLogStderr
 endfunction

@@ -29,6 +29,11 @@ function! skyrg#views#tasks#open_last_log() abort
     let l:log = get(l:all[0], 'log_file', '')
     if !empty(l:log) && filereadable(l:log)
       execute 'split' fnameescape(l:log)
+      call skyrg#ui#style#apply_log()
+      normal! G
+      if l:all[0].status ==# 'running'
+        call s:start_tail(l:log)
+      endif
       return
     endif
   endif
@@ -38,6 +43,8 @@ function! skyrg#views#tasks#open_last_log() abort
     let l:path = skyrg#backend#action_log#path(l:entries[0])
     if !empty(l:path) && filereadable(l:path)
       execute 'split' fnameescape(l:path)
+      call skyrg#ui#style#apply_log()
+      normal! G
       return
     endif
   endif
@@ -299,12 +306,18 @@ function! s:on_key(winid, key) abort
     return 1
   endif
 
-  " Enter: open full log
+  " Enter: open full log with styling + auto-tail
   if a:key ==# "\<CR>"
     let l:log = s:selected_log_path()
+    let l:is_running = s:selected_is_running()
     if !empty(l:log) && filereadable(l:log)
       call s:close_popups()
       execute 'split' fnameescape(l:log)
+      call skyrg#ui#style#apply_log()
+      normal! G
+      if l:is_running
+        call s:start_tail(l:log)
+      endif
     endif
     return 1
   endif
@@ -431,4 +444,58 @@ function! s:close_popups() abort
     silent! call popup_close(s:popup_output)
     let s:popup_output = 0
   endif
+endfunction
+
+" Check if the currently selected task is running.
+function! s:selected_is_running() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if !empty(l:tasks) && s:selected < len(l:tasks)
+    return l:tasks[s:selected].status ==# 'running'
+  endif
+  return 0
+endfunction
+
+"==============================================================================
+" Auto-tail — live log following in a split
+"==============================================================================
+
+let s:tail_timer = 0
+let s:tail_log = ''
+let s:tail_bufnr = 0
+
+function! s:start_tail(log_path) abort
+  call s:stop_tail()
+  let s:tail_log = a:log_path
+  let s:tail_bufnr = bufnr('%')
+  let s:tail_timer = timer_start(1000, function('s:tail_tick'), {'repeat': -1})
+endfunction
+
+function! s:tail_tick(timer) abort
+  " Stop if buffer is gone
+  if !bufexists(s:tail_bufnr) || !filereadable(s:tail_log)
+    call s:stop_tail()
+    return
+  endif
+  " Re-read file and scroll to bottom
+  let l:cur_win = winnr()
+  let l:tail_win = bufwinnr(s:tail_bufnr)
+  if l:tail_win == -1
+    call s:stop_tail()
+    return
+  endif
+  execute l:tail_win . 'wincmd w'
+  let l:lines = readfile(s:tail_log)
+  silent! %delete _
+  call setline(1, l:lines)
+  normal! G
+  execute l:cur_win . 'wincmd w'
+endfunction
+
+function! s:stop_tail() abort
+  if s:tail_timer
+    call timer_stop(s:tail_timer)
+    let s:tail_timer = 0
+  endif
+  let s:tail_log = ''
+  let s:tail_bufnr = 0
 endfunction
