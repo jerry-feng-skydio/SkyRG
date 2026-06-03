@@ -178,6 +178,9 @@ function! skyrg#backend#device#watch_usb() abort
     \   'out_mode': 'nl',
     \ })
   call skyrg#log#info('device', 'USB watcher started')
+
+  " Initial probe so devices are detected at Vim startup
+  call skyrg#backend#device#detect({vehicles -> s:on_usb_detect_done(vehicles)})
 endfunction
 
 " Stop watching for USB events.
