@@ -184,7 +184,7 @@ function! s:on_term_exit(task_id, job, exit_code) abort
 
   if !empty(l:followups)
     let l:ctx = s:build_followup_ctx(l:task)
-    call skyrg#backend#tasks#set_followups(a:task_id, l:followups, l:ctx)
+    call s:run_followups(a:task_id, l:followups, l:ctx)
   endif
 endfunction
 
@@ -307,7 +307,31 @@ function! s:on_exit(task_id, job, exit_code) abort
 
   if !empty(l:followups)
     let l:ctx = s:build_followup_ctx(l:task)
-    call skyrg#backend#tasks#set_followups(a:task_id, l:followups, l:ctx)
+    call s:run_followups(a:task_id, l:followups, l:ctx)
+  endif
+endfunction
+
+"=============================================================================="
+" Followup routing
+"=============================================================================="
+
+" Execute auto followups immediately; store the rest for the popup.
+function! s:run_followups(task_id, followups, ctx) abort
+  let l:manual = []
+  for l:f in a:followups
+    if get(l:f, 'auto', 0)
+      call skyrg#log#info('action', 'auto-execute followup "%s" for #%d', l:f.name, a:task_id)
+      try
+        call l:f.execute(a:ctx)
+      catch
+        call skyrg#log#error('action', 'auto followup "%s" failed: %s', l:f.name, v:exception)
+      endtry
+    else
+      call add(l:manual, l:f)
+    endif
+  endfor
+  if !empty(l:manual)
+    call skyrg#backend#tasks#set_followups(a:task_id, l:manual, a:ctx)
   endif
 endfunction
 
