@@ -248,6 +248,17 @@ function! skyrg#ui#live_split#save_current() abort
   let l:fname = l:dir . '/' . printf('%s-%s.log', l:slug, strftime('%Y%m%d-%H%M%S'))
   let l:lines = getbufline(l:s.bufnr, 1, '$')
   call writefile(l:lines, l:fname)
+
+  " Register as a task so it appears in the task viewer
+  let l:task_id = skyrg#backend#tasks#add({
+    \ 'title': 'Saved: ' . l:s.title,
+    \ 'cmd': 'save ' . l:fname,
+    \ })
+  call skyrg#backend#tasks#append_output(l:task_id, 'stdout',
+    \ printf('Saved %d lines from "%s"', len(l:lines), l:s.title))
+  call skyrg#backend#tasks#append_output(l:task_id, 'stdout', l:fname)
+  call skyrg#backend#tasks#complete(l:task_id, 0)
+
   echo printf('[SkyRG] Saved %d lines → %s', len(l:lines), l:fname)
 endfunction
 
