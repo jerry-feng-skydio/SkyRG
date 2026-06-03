@@ -252,6 +252,14 @@ function! s:run_job(action, ctx) abort
   endif
 
   echom printf('[SkyRG] Started: %s', l:title)
+
+  " Auto-monitor: open log split immediately
+  if get(l:opts, 'monitor', 0)
+    let l:log = get(skyrg#backend#tasks#get(l:task_id), 'log_file', '')
+    if !empty(l:log)
+      call skyrg#views#tasks#open_monitor(l:log, l:task_id)
+    endif
+  endif
 endfunction
 
 "==============================================================================
@@ -300,6 +308,15 @@ function! s:on_exit(task_id, job, exit_code) abort
       echohl ErrorMsg
       echom printf('[SkyRG] ✗ %s failed (exit %d, %ds)', l:task.title, a:exit_code, l:dur)
       echohl None
+    endif
+  endif
+
+  " Auto-monitor: close on clean exit if configured, keep on failure
+  if get(l:opts, 'monitor', 0)
+    if a:exit_code == 0 && get(l:opts, 'monitor_on_success', 'keep') ==# 'close'
+      call skyrg#views#tasks#close_monitor(a:task_id)
+    else
+      call skyrg#views#tasks#stop_monitor_tail(a:task_id)
     endif
   endif
 
