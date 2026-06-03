@@ -142,6 +142,11 @@ function! skyrg#ui#live_split#bufnr(id) abort
   return empty(l:s) ? -1 : l:s.bufnr
 endfunction
 
+" Return 1 if the given buffer number belongs to an active live split.
+function! skyrg#ui#live_split#is_live_split(bufnr) abort
+  return s:id_for_bufnr(a:bufnr) != -1
+endfunction
+
 "==============================================================================
 " File source — timer-based re-read
 "==============================================================================

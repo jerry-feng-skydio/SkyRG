@@ -216,5 +216,21 @@ function! s:ensure_builtins() abort
     \   'priority': 99,
     \   'execute': {ctx -> skyrg#instabug#dump()},
     \ },
+    \ {
+    \   'name': 'Save log to file',
+    \   'key': 'w',
+    \   'group': 'live_split',
+    \   'priority': 90,
+    \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'execute': {ctx -> skyrg#ui#live_split#save_current()},
+    \ },
+    \ {
+    \   'name': 'Close live split',
+    \   'key': 'q',
+    \   'group': 'live_split',
+    \   'priority': 91,
+    \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'execute': {ctx -> skyrg#ui#live_split#close_current()},
+    \ },
     \ ])
 endfunction
