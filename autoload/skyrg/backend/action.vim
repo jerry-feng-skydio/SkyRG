@@ -52,7 +52,8 @@ function! s:run_shell(action, ctx) abort
   let l:cmd = s:resolve_cmd(a:action.shell, a:ctx)
   let l:opts = get(a:action, 'job_opts', {})
   let l:title = get(l:opts, 'title', a:action.name)
-  let l:cwd = get(l:opts, 'cwd', '')
+  let l:Cwd_val = get(l:opts, 'cwd', '')
+  let l:cwd = type(l:Cwd_val) == v:t_func ? l:Cwd_val(a:ctx) : l:Cwd_val
 
   call skyrg#log#info('action', 'dispatch shell: "%s" cmd=%s', l:title, l:cmd)
   let l:t = skyrg#log#timer()
@@ -109,7 +110,8 @@ function! s:run_interactive(action, ctx) abort
   let l:cmd = s:resolve_cmd(a:action.job, a:ctx)
   let l:opts = get(a:action, 'job_opts', {})
   let l:title = get(l:opts, 'title', a:action.name)
-  let l:cwd = get(l:opts, 'cwd', getcwd())
+  let l:Cwd_val = get(l:opts, 'cwd', getcwd())
+  let l:cwd = type(l:Cwd_val) == v:t_func ? l:Cwd_val(a:ctx) : l:Cwd_val
 
   call skyrg#backend#action_log#maybe_compact()
 
@@ -196,7 +198,8 @@ function! s:run_job(action, ctx) abort
   let l:cmd = s:resolve_cmd(a:action.job, a:ctx)
   let l:opts = get(a:action, 'job_opts', {})
   let l:title = get(l:opts, 'title', a:action.name)
-  let l:cwd = get(l:opts, 'cwd', getcwd())
+  let l:Cwd_val = get(l:opts, 'cwd', getcwd())
+  let l:cwd = type(l:Cwd_val) == v:t_func ? l:Cwd_val(a:ctx) : l:Cwd_val
 
   call skyrg#backend#action_log#maybe_compact()
 
