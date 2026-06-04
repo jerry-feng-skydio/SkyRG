@@ -30,6 +30,19 @@ function! skyrg#instabug#dump() abort
     call skyrg#log#info('instabug', '%s', l:line)
   endfor
 
+  " Vim :messages — capture recent messages (errors, warnings, echom output).
+  " Bounded to the last 50 lines to keep dump size reasonable.
+  call skyrg#log#info('instabug', '--- MESSAGES ---')
+  let l:msgs = split(execute('messages'), "\n")
+  let l:msg_limit = 50
+  if len(l:msgs) > l:msg_limit
+    call skyrg#log#info('instabug', '... (%d lines truncated)', len(l:msgs) - l:msg_limit)
+    let l:msgs = l:msgs[-l:msg_limit :]
+  endif
+  for l:msg in l:msgs
+    call skyrg#log#info('instabug', '%s', l:msg)
+  endfor
+
   " Window metadata
   call skyrg#log#info('instabug', '--- WINDOWS ---')
   let l:wins = []
