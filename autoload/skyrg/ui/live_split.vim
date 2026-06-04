@@ -206,9 +206,7 @@ function! s:job_exit(id, job, exit_code) abort
     call appendbufline(l:s.bufnr, '$', l:msg)
   endif
   call skyrg#log#info('ui/live_split', '#%d job exited (%d)', a:id, a:exit_code)
-  if has_key(s:splits, a:id)
-    call remove(s:splits, a:id)
-  endif
+  " Keep entry in s:splits so context actions (save/copy/close) still work.
 endfunction
 
 " Periodic scroll-to-bottom for job source (if cursor at end).
