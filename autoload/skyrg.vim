@@ -140,6 +140,13 @@ endfunction
 " Hot-reload: re-source all autoload files and plugin entry point
 "==============================================================================
 function! skyrg#reload() abort
+  " Snapshot state that will be lost when s: vars reinitialize
+  let l:had_tasks = !empty(skyrg#backend#tasks#running())
+
+  " Stop USB watcher before re-source to prevent duplicates
+  " (global.vim calls watch_usb() which starts a new one)
+  call skyrg#backend#device#unwatch_usb()
+
   let l:root = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
   " Re-source all autoload files (order doesn't matter for autoload)
   for l:f in glob(l:root . '/autoload/skyrg/**/*.vim', 0, 1)
@@ -159,5 +166,11 @@ function! skyrg#reload() abort
   call skyrg#backend#context#reset()
   " Reset keymap cache in case user changed g:skyrg_keymap
   call skyrg#panel#keymap#reset()
-  echom '[SkyRG] Reloaded'
+
+  echom '[SkyRG] Reloaded (device cache + action history cleared)'
+  if l:had_tasks
+    echohl WarningMsg
+    echom '[SkyRG] Warning: in-flight tasks lost tracking — jobs still run but completion callbacks may not fire'
+    echohl None
+  endif
 endfunction
