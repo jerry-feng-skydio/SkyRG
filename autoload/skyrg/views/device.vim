@@ -408,15 +408,18 @@ function! s:do_search_logs_prompt(board, source) abort
   let l:term = input(printf('[SkyRG] Search %s for (empty=all): ', a:source.label))
   " Merge all matching files and sort by timestamp.
   " logcat format: MM-DD HH:MM:SS.mmm  — sort -t' ' -k1,2 gives time order.
+  " Filter out logcat buffer-switch headers (--------- switch to <buf>)
+  " before sorting, since they have no timestamp and sort to the top.
+  let l:strip = 'grep -hv ''^---------'' %s/%s'
   if empty(l:term)
     let l:cmd = printf(
-      \ 'ssh %s "cat %s/%s | sort -t'' '' -k1,2 -s"',
+      \ 'ssh %s "' . l:strip . ' | sort -t'' '' -k1,2 -s"',
       \ a:board.host, a:source.dir, a:source.glob)
     let l:title = printf('C38 %s (all)', a:source.label)
   else
     let l:cmd = printf(
-      \ 'ssh %s "grep -h ''%s'' %s/%s | sort -t'' '' -k1,2 -s"',
-      \ a:board.host, escape(l:term, "'"), a:source.dir, a:source.glob)
+      \ 'ssh %s "' . l:strip . ' | grep ''%s'' | sort -t'' '' -k1,2 -s"',
+      \ a:board.host, a:source.dir, a:source.glob, escape(l:term, "'"))
     let l:title = printf('C38 %s grep: %s', a:source.label, l:term)
   endif
   call skyrg#ui#live_split#open({
