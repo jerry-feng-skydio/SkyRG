@@ -146,11 +146,57 @@ function! skyrg#views#device#ssh(ctx) abort
 endfunction
 
 function! s:do_ssh(board) abort
+  let l:dirs = s:ssh_directories(a:board)
+  if len(l:dirs) <= 1
+    " No picker needed — just connect
+    let l:dir = empty(l:dirs) ? '' : l:dirs[0].value
+    call s:ssh_connect(a:board, l:dir)
+    return
+  endif
+  call s:show_picker(a:board.name . ' — SSH directory', l:dirs,
+    \ {item -> s:ssh_connect(a:board, item.value)})
+endfunction
+
+function! s:ssh_connect(board, dir) abort
+  let l:cmd = empty(a:dir)
+    \ ? 'ssh ' . a:board.host
+    \ : printf('ssh -t %s "cd %s && exec \\$SHELL -l"', a:board.host, shellescape(a:dir))
   call skyrg#backend#action#dispatch({
     \ 'name': 'SSH ' . a:board.name,
-    \ 'job': 'ssh ' . a:board.host,
+    \ 'job': l:cmd,
     \ 'job_opts': {'interactive': 1, 'title': 'SSH ' . a:board.host},
     \ }, {})
+endfunction
+
+" SSH directory options, keyed by board name.
+" First entry is the default landing spot (double-tap Enter to connect).
+function! s:ssh_directories(board) abort
+  let l:name = a:board.name
+  let l:dirs = []
+
+  if l:name ==# 'SOC'
+    " C38 SOC — root filesystem, logging/analytics paths
+    call extend(l:dirs, [
+      \ {'label': '/  (root)',                                    'value': '/'},
+      \ {'label': '/data/vendor/logs/process_logs/latest/',       'value': '/data/vendor/logs/process_logs/latest'},
+      \ {'label': '/home/skydio/semi_persistent/analytics/',      'value': '/home/skydio/semi_persistent/analytics'},
+      \ {'label': '/home/skydio/semi_persistent/syslog/',         'value': '/home/skydio/semi_persistent/syslog'},
+      \ {'label': '/home/skydio/emmc_logs/',                      'value': '/home/skydio/emmc_logs'},
+      \ {'label': '/home/skydio/semi_persistent/',                'value': '/home/skydio/semi_persistent'},
+      \ ])
+  else
+    " NVU, QCU, etc. — home directory + common paths
+    call extend(l:dirs, [
+      \ {'label': '~/  (home)',                                   'value': '~'},
+      \ {'label': '~/semi_persistent/process_logs/latest/',       'value': '~/semi_persistent/process_logs/latest'},
+      \ {'label': '~/semi_persistent/analytics/',                 'value': '~/semi_persistent/analytics'},
+      \ {'label': '~/semi_persistent/syslog/',                    'value': '~/semi_persistent/syslog'},
+      \ {'label': '~/emmc_logs/',                                 'value': '~/emmc_logs'},
+      \ {'label': '~/semi_persistent/',                           'value': '~/semi_persistent'},
+      \ ])
+  endif
+
+  return l:dirs
 endfunction
 
 " Tail logs on a device board.
