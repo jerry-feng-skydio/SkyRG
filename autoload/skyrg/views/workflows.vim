@@ -54,12 +54,7 @@ function! skyrg#views#workflows#open(ctx) abort
     return
   endif
 
-  let l:items = []
-  for l:w in l:workflows
-    call add(l:items, printf('%s (%s)', l:w.name, strftime('%Y-%m-%d %H:%M', l:w.mtime)))
-  endfor
-
-  let l:idx = s:show_picker('Open workflow', l:items)
+  let l:idx = s:show_picker('Open workflow', l:workflows)
   if l:idx < 0 | return | endif
 
   let l:selected = l:workflows[l:idx]
@@ -120,8 +115,7 @@ function! skyrg#views#workflows#delete(ctx) abort
     return
   endif
 
-  let l:items = map(copy(l:workflows), {_, w -> w.name})
-  let l:idx = s:show_picker('Delete workflow', l:items)
+  let l:idx = s:show_picker('Delete workflow', l:workflows)
   if l:idx < 0 | return | endif
 
   let l:selected = l:workflows[l:idx]
@@ -142,8 +136,7 @@ function! skyrg#views#workflows#rename(ctx) abort
     return
   endif
 
-  let l:items = map(copy(l:workflows), {_, w -> w.name})
-  let l:idx = s:show_picker('Rename workflow', l:items)
+  let l:idx = s:show_picker('Rename workflow', l:workflows)
   if l:idx < 0 | return | endif
 
   let l:selected = l:workflows[l:idx]
@@ -173,8 +166,7 @@ function! skyrg#views#workflows#copy(ctx) abort
     return
   endif
 
-  let l:items = map(copy(l:workflows), {_, w -> w.name})
-  let l:idx = s:show_picker('Copy workflow', l:items)
+  let l:idx = s:show_picker('Copy workflow', l:workflows)
   if l:idx < 0 | return | endif
 
   let l:selected = l:workflows[l:idx]
@@ -254,22 +246,68 @@ endfunction
 " Picker
 "==============================================================================
 
-" Simple numeric picker (fallback if fzf not available).
-function! s:show_picker(title, items) abort
-  if empty(a:items)
+" Pick a workflow using fzf if available, otherwise numeric picker.
+" title: prompt text
+" workflows: list of workflow dicts with {name, path, mtime}
+" Returns: index into workflows array, or -1 if cancelled
+function! s:show_picker(title, workflows) abort
+  if empty(a:workflows)
     return -1
   endif
 
-  echo printf('[SkyRG] %s', a:title)
-  for l:i in range(len(a:items))
-    echo printf('  %d. %s', l:i + 1, a:items[l:i])
+  " Try fzf first
+  if exists('*fzf#run')
+    return s:fzf_picker(a:title, a:workflows)
+  endif
+
+  " Fallback to numeric picker
+  return s:numeric_picker(a:title, a:workflows)
+endfunction
+
+" Fzf picker for workflows.
+function! s:fzf_picker(title, workflows) abort
+  let l:lines = []
+  for l:i in range(len(a:workflows))
+    let l:w = a:workflows[l:i]
+    call add(l:lines, printf('%s %s', l:w.name, strftime('%Y-%m-%d %H:%M', l:w.mtime)))
   endfor
 
-  let l:choice = input('[SkyRG] Select (1-' . len(a:items) . '): ')
+  let s:selected_idx = -1
+  call fzf#run(fzf#wrap({
+    \ 'source': l:lines,
+    \ 'sink': {line -> s:fzf_sink(line, a:workflows)},
+    \ 'down': 15,
+    \ 'options': '--with-nth=1',
+    \ }))
+  return s:selected_idx
+endfunction
+
+" Sink for fzf picker: maps selected line back to workflow index.
+function! s:fzf_sink(line, workflows) abort
+  let l:parts = split(a:line)
+  if empty(l:parts) | return | endif
+  let l:name = l:parts[0]
+  for l:i in range(len(a:workflows))
+    if a:workflows[l:i].name ==# l:name
+      let s:selected_idx = l:i
+      return
+    endif
+  endfor
+endfunction
+
+" Numeric picker (fallback when fzf not available).
+function! s:numeric_picker(title, workflows) abort
+  echo printf('[SkyRG] %s', a:title)
+  for l:i in range(len(a:workflows))
+    let l:w = a:workflows[l:i]
+    echo printf('  %d. %s (%s)', l:i + 1, l:w.name, strftime('%Y-%m-%d %H:%M', l:w.mtime))
+  endfor
+
+  let l:choice = input('[SkyRG] Select (1-' . len(a:workflows) . '): ')
   if empty(l:choice) | return -1 | endif
 
   let l:idx = str2nr(l:choice) - 1
-  if l:idx < 0 || l:idx >= len(a:items)
+  if l:idx < 0 || l:idx >= len(a:workflows)
     echohl WarningMsg | echom '[SkyRG] Invalid selection' | echohl None
     return -1
   endif
