@@ -21,14 +21,14 @@ function! s:get_vehicle_defs() abort
     return g:skyrg_device_defs
   endif
   let l:r47_probes = [
-    \ {'board': 'NVU',        'host': 'nvu'},
-    \ {'board': 'QCU',        'host': 'qcu'},
-    \ {'board': 'NVU (wifi)', 'host': 'nvu-wifi'},
-    \ {'board': 'QCU (wifi)', 'host': 'qcu-wifi'},
+    \ {'board': 'NVU',        'host': 'nvu',       'platform': 'linux'},
+    \ {'board': 'QCU',        'host': 'qcu',       'platform': 'linux'},
+    \ {'board': 'NVU (wifi)', 'host': 'nvu-wifi',  'platform': 'linux'},
+    \ {'board': 'QCU (wifi)', 'host': 'qcu-wifi',  'platform': 'linux'},
     \ ]
   let l:c38_probes = [
-    \ {'board': 'SOC',   'host': 'c38'},
-    \ {'board': 'Radio', 'host': 'c38-radio'},
+    \ {'board': 'SOC',   'host': 'c38',       'platform': 'android'},
+    \ {'board': 'Radio', 'host': 'c38-radio', 'platform': 'linux'},
     \ ]
   return [
     \ {'type': 'R47', 'probes': l:r47_probes},
@@ -292,7 +292,11 @@ function! s:group_vehicles() abort
     let l:boards = []
     for l:p in l:vdef.probes
       if get(s:probe_results, l:p.host, 0)
-        call add(l:boards, {'name': l:p.board, 'host': l:p.host})
+        call add(l:boards, {
+          \ 'name': l:p.board,
+          \ 'host': l:p.host,
+          \ 'platform': get(l:p, 'platform', 'linux'),
+          \ })
       endif
     endfor
     if !empty(l:boards)

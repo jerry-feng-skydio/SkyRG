@@ -168,36 +168,34 @@ function! s:ssh_connect(board, dir) abort
     \ }, {})
 endfunction
 
-" SSH directory options, keyed by board name.
+" SSH directory options, keyed by board.platform ('android' or 'linux').
 " First entry is the default landing spot (double-tap Enter to connect).
+" Paths derived from util/path_util/BUILD.bazel:
+"   android: SKYDIO_DIR_PATH=/odm, SEMI_PERSISTENT_OVERRIDE_PATH=/data/vendor
+"   linux:   SKYDIO_DIR_PATH=/home/skydio, semi_persistent under HomeSkydioPath
 function! s:ssh_directories(board) abort
-  let l:name = a:board.name
-  let l:dirs = []
+  let l:platform = get(a:board, 'platform', 'linux')
 
-  if l:name ==# 'SOC'
-    " C38 SOC — SKYDIO_DIR_PATH=/odm, SEMI_PERSISTENT_OVERRIDE_PATH=/data/vendor
-    " ProcessLogsPath uses InternalLogsPathAccessory (/data/vendor/logs)
-    call extend(l:dirs, [
+  if l:platform ==# 'android'
+    return [
       \ {'label': '/  (root)',                                    'value': '/'},
       \ {'label': '/data/vendor/logs/process_logs/latest/',       'value': '/data/vendor/logs/process_logs/latest'},
       \ {'label': '/data/vendor/analytics/',                      'value': '/data/vendor/analytics'},
       \ {'label': '/data/vendor/syslog/',                         'value': '/data/vendor/syslog'},
       \ {'label': '/data/vendor/',                                'value': '/data/vendor'},
       \ {'label': '/odm/',                                        'value': '/odm'},
-      \ ])
-  else
-    " NVU, QCU, etc. — home directory + common paths
-    call extend(l:dirs, [
-      \ {'label': '~/  (home)',                                   'value': '~'},
-      \ {'label': '~/semi_persistent/process_logs/latest/',       'value': '~/semi_persistent/process_logs/latest'},
-      \ {'label': '~/semi_persistent/analytics/',                 'value': '~/semi_persistent/analytics'},
-      \ {'label': '~/semi_persistent/syslog/',                    'value': '~/semi_persistent/syslog'},
-      \ {'label': '~/emmc_logs/',                                 'value': '~/emmc_logs'},
-      \ {'label': '~/semi_persistent/',                           'value': '~/semi_persistent'},
-      \ ])
+      \ ]
   endif
 
-  return l:dirs
+  " linux — /home/skydio is HomeSkydioPath for all linux boards
+  return [
+    \ {'label': '~/  (home)',                                   'value': '~'},
+    \ {'label': '~/semi_persistent/process_logs/latest/',       'value': '~/semi_persistent/process_logs/latest'},
+    \ {'label': '~/semi_persistent/analytics/',                 'value': '~/semi_persistent/analytics'},
+    \ {'label': '~/semi_persistent/syslog/',                    'value': '~/semi_persistent/syslog'},
+    \ {'label': '~/emmc_logs/',                                 'value': '~/emmc_logs'},
+    \ {'label': '~/semi_persistent/',                           'value': '~/semi_persistent'},
+    \ ]
 endfunction
 
 " Tail logs on a device board.
