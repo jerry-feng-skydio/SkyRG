@@ -25,18 +25,22 @@ function! skyrg#backend#action#dispatch(action, ctx) abort
     call skyrg#log#info('action', 'dispatch vim: "%s"', a:action.name)
     call a:action.execute(a:ctx)
     call skyrg#backend#context_history#record(a:action, a:ctx)
+    call skyrg#backend#workflow#capture(a:action, a:ctx, '')
     return
   endif
 
   " Shell action (synchronous)
   if has_key(a:action, 'shell')
+    let l:resolved = s:resolve_cmd(a:action.shell, a:ctx)
     call s:run_shell(a:action, a:ctx)
     call skyrg#backend#context_history#record(a:action, a:ctx)
+    call skyrg#backend#workflow#capture(a:action, a:ctx, l:resolved)
     return
   endif
 
   " Job action (async or interactive terminal)
   if has_key(a:action, 'job')
+    let l:resolved = s:resolve_cmd(a:action.job, a:ctx)
     let l:opts = get(a:action, 'job_opts', {})
     if get(l:opts, 'interactive', 0)
       call s:run_interactive(a:action, a:ctx)
@@ -44,6 +48,7 @@ function! skyrg#backend#action#dispatch(action, ctx) abort
       call s:run_job(a:action, a:ctx)
     endif
     call skyrg#backend#context_history#record(a:action, a:ctx)
+    call skyrg#backend#workflow#capture(a:action, a:ctx, l:resolved)
     return
   endif
 

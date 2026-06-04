@@ -89,6 +89,20 @@ function! skyrg#backend#context#execute(action, ctx) abort
 endfunction
 
 "==============================================================================
+" Helpers
+"==============================================================================
+
+function! s:toggle_workflow() abort
+  if skyrg#backend#workflow#is_recording()
+    call skyrg#backend#workflow#stop()
+  else
+    let l:name = input('[SkyRG] Workflow name: ')
+    if empty(l:name) | return | endif
+    call skyrg#backend#workflow#start(l:name)
+  endif
+endfunction
+
+"==============================================================================
 " Built-in actions
 "==============================================================================
 
@@ -215,6 +229,17 @@ function! s:ensure_builtins() abort
     \   'group': 'device',
     \   'priority': 89,
     \   'execute': {ctx -> skyrg#views#device#refresh(ctx)},
+    \ },
+    \ {
+    \   'name': 'Record workflow',
+    \   'label_fn': {ctx -> skyrg#backend#workflow#is_recording()
+    \     ? '⏹ Stop recording: ' . skyrg#backend#workflow#name()
+    \     : '🔴 Record workflow'},
+    \   'key': 'W',
+    \   'group': 'debug',
+    \   'priority': 96,
+    \   'no_history': 1,
+    \   'execute': {ctx -> s:toggle_workflow()},
     \ },
     \ {
     \   'name': 'Reload plugin',
