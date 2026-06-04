@@ -110,6 +110,14 @@ function! s:toggle_workflow() abort
   endif
 endfunction
 
+function! s:describe_workflow_step() abort
+  let l:title = input('[SkyRG] Step title: ')
+  if empty(l:title) | return | endif
+  let l:body = input('[SkyRG] Description (what should the agent do?): ')
+  if empty(l:body) | let l:body = l:title | endif
+  call skyrg#backend#workflow#describe(l:title, l:body)
+endfunction
+
 "==============================================================================
 " Built-in actions
 "==============================================================================
@@ -251,6 +259,15 @@ function! s:ensure_builtins() abort
     \   'priority': 96,
     \   'no_history': 1,
     \   'execute': {ctx -> s:toggle_workflow()},
+    \ },
+    \ {
+    \   'name': 'Describe workflow step',
+    \   'key': 'D',
+    \   'group': 'debug',
+    \   'priority': 97,
+    \   'no_history': 1,
+    \   'predicate': {ctx -> skyrg#backend#workflow#is_recording()},
+    \   'execute': {ctx -> s:describe_workflow_step()},
     \ },
     \ {
     \   'name': 'Reload plugin',

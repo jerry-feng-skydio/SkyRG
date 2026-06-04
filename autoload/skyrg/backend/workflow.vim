@@ -92,6 +92,26 @@ function! skyrg#backend#workflow#step_count() abort
   return len(s:steps)
 endfunction
 
+" Add a free-text description step (no action executed).
+" Used for heavy steps the user doesn't want to run during recording.
+function! skyrg#backend#workflow#describe(title, body) abort
+  if !s:recording
+    echohl WarningMsg | echom '[SkyRG] Not recording a workflow' | echohl None
+    return
+  endif
+  call add(s:steps, {
+    \ 'name': a:title,
+    \ 'type': 'describe',
+    \ 'description': a:body,
+    \ 'agent_hint': '',
+    \ 'group': '',
+    \ 'timestamp': localtime(),
+    \ 'inputs': {},
+    \ })
+  call skyrg#log#info('workflow', 'described step %d: %s', len(s:steps), a:title)
+  echom printf('[SkyRG] Step added: %s', a:title)
+endfunction
+
 "==============================================================================
 " Step capture — called from action#dispatch hook
 "==============================================================================
@@ -187,12 +207,31 @@ function! s:render_workflow(name, steps, mode) abort
   endif
   call add(l:lines, '')
 
+  " Q&A preamble
+  call extend(l:lines, [
+    \ '## 0. Clarify requirements',
+    \ '',
+    \ 'Before executing, review this workflow and confirm with the user:',
+    \ '',
+    \ '1. Do you understand each step and its expected outcome?',
+    \ '2. Are there any steps that need adjustment for the current situation?',
+    \ '3. Are there environment prerequisites (device connected, build clean, etc.)?',
+    \ '',
+    \ 'Proceed only after the user confirms.',
+    \ '',
+    \ ])
+
   " Steps
   let l:step_num = 0
   for l:s in a:steps
     let l:step_num += 1
 
-    if l:s.type ==# 'shell'
+    if l:s.type ==# 'describe'
+      " Free-text step — user-authored instruction for the agent
+      call add(l:lines, printf('## %d. %s', l:step_num, l:s.name))
+      call add(l:lines, '')
+      call add(l:lines, l:s.description)
+    elseif l:s.type ==# 'shell'
       call add(l:lines, printf('## %d. %s', l:step_num, l:s.name))
       call add(l:lines, '')
       if !empty(get(l:s, 'cwd', ''))
