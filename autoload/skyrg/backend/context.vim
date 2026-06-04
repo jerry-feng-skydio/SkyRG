@@ -217,6 +217,13 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#device#refresh(ctx)},
     \ },
     \ {
+    \   'name': 'Reload plugin',
+    \   'key': 'r',
+    \   'group': 'debug',
+    \   'priority': 98,
+    \   'execute': {ctx -> skyrg#reload()},
+    \ },
+    \ {
     \   'name': 'Instabug (dump screen to log)',
     \   'key': '!',
     \   'group': 'debug',

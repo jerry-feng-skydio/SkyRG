@@ -150,6 +150,13 @@ function! skyrg#reload() abort
   let g:skyrg_reloading = 1
   execute 'source' fnameescape(l:root . '/plugin/skyrg.vim')
   unlet g:skyrg_reloading
+  " Re-source global.vim so page config and user overrides take effect
+  let l:global = expand('~/.dotfiles/skyrg/global.vim')
+  if filereadable(l:global)
+    execute 'source' fnameescape(l:global)
+  endif
+  " Reset context action registry so builtins re-register cleanly
+  call skyrg#backend#context#reset()
   " Reset keymap cache in case user changed g:skyrg_keymap
   call skyrg#panel#keymap#reset()
   echom '[SkyRG] Reloaded'
