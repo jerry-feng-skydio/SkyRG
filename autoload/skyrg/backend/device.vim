@@ -67,8 +67,15 @@ function! skyrg#backend#device#statusline() abort
   if empty(s:cached_vehicles)
     return '[No Connected Devices]'
   endif
-  let l:types = map(copy(s:cached_vehicles), 'v:val.type')
-  return '[🔗 ' . join(l:types, ' ') . ']'
+  let l:parts = []
+  for l:v in s:cached_vehicles
+    let l:name = l:v.type
+    if has_key(l:v, 'hostname') && !empty(l:v.hostname)
+      let l:name .= ' ' . l:v.hostname
+    endif
+    call add(l:parts, l:name)
+  endfor
+  return '[🔗 ' . join(l:parts, ' | ') . ']'
 endfunction
 
 " Start async detection. Callback receives the vehicle list when done.
@@ -140,14 +147,59 @@ function! s:on_probe_exit(host, Callback, job, exit_code) abort
     return
   endif
 
-  " All probes done — group into vehicles
+  " All probes done — group into vehicles, then fetch hostnames
   let s:cached_vehicles = s:group_vehicles()
-  let s:detecting = 0
 
   call skyrg#log#info('device', 'detected %d vehicle(s): %s',
     \ len(s:cached_vehicles),
     \ join(map(copy(s:cached_vehicles), 'v:val.type'), ', '))
 
+  " Fetch device hostnames (async) before signalling completion
+  call s:fetch_hostnames(a:Callback)
+endfunction
+
+" Fetch the human-readable hostname for each detected vehicle via SSH.
+" Picks the first reachable board per vehicle.  When all done, marks
+" detection finished and calls the Callback.
+function! s:fetch_hostnames(Callback) abort
+  let s:hostname_pending = 0
+  for l:v in s:cached_vehicles
+    if empty(l:v.boards) | continue | endif
+    let l:host = l:v.boards[0].host
+    let s:hostname_pending += 1
+    let l:cmd = printf(
+      \ 'ssh -o ConnectTimeout=1 -o BatchMode=yes %s hostname',
+      \ shellescape(l:host))
+    call job_start(['/bin/sh', '-c', l:cmd], {
+      \ 'out_cb': function('s:on_hostname_out', [l:v]),
+      \ 'exit_cb': function('s:on_hostname_exit', [a:Callback]),
+      \ 'out_mode': 'nl',
+      \ })
+  endfor
+  " No vehicles — finish immediately
+  if s:hostname_pending == 0
+    let s:detecting = 0
+    call a:Callback(s:cached_vehicles)
+  endif
+endfunction
+
+function! s:on_hostname_out(vehicle, ch, msg) abort
+  " Store the first line of output as the device name
+  if !has_key(a:vehicle, 'hostname') || empty(a:vehicle.hostname)
+    let a:vehicle.hostname = trim(a:msg)
+  endif
+endfunction
+
+function! s:on_hostname_exit(Callback, job, exit_code) abort
+  let s:hostname_pending -= 1
+  if s:hostname_pending > 0 | return | endif
+  " All hostnames fetched — fill in blanks
+  for l:v in s:cached_vehicles
+    if !has_key(l:v, 'hostname') || empty(l:v.hostname)
+      let l:v.hostname = ''
+    endif
+  endfor
+  let s:detecting = 0
   call a:Callback(s:cached_vehicles)
 endfunction
 

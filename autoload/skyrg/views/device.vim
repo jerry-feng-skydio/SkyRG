@@ -174,7 +174,7 @@ function! s:do_tail_vehicle(vehicle) abort
     call s:show_picker('C38 — Tail', [
       \ {'label': 'Tail ucon',         'value': 'ucon'},
       \ {'label': 'Tail AVC denials',  'value': 'avc'},
-      \ ], function('s:on_c38_tail_picked', [l:soc]))
+      \ ], function('s:on_c38_tail_picked', [l:soc, a:vehicle]))
     return
   endif
 
@@ -187,13 +187,15 @@ let s:c38_tail_filters = {
   \ 'avc':  {'title': 'C38 tail AVC denials',  'grep': 'avc: denied'},
   \ }
 
-function! s:on_c38_tail_picked(board, item) abort
+function! s:on_c38_tail_picked(board, vehicle, item) abort
   let l:f = s:c38_tail_filters[a:item.value]
+  let l:meta = s:device_meta(a:board, a:vehicle)
+  let l:meta['Filter'] = l:f.grep
   call skyrg#ui#live_split#open({
     \ 'title': l:f.title,
     \ 'source': 'job',
     \ 'cmd': printf('ssh %s logcat | grep --line-buffered "%s"', a:board.host, l:f.grep),
-    \ 'meta': {'Host': a:board.host, 'Board': a:board.name, 'Filter': l:f.grep},
+    \ 'meta': l:meta,
     \ })
 endfunction
 
@@ -390,22 +392,22 @@ function! s:do_search_logs(vehicle) abort
 
   " If multiple sources, let user pick; otherwise go straight to search
   if len(s:c38_log_sources) == 1
-    call s:do_search_logs_prompt(l:soc, s:c38_log_sources[0])
+    call s:do_search_logs_prompt(l:soc, a:vehicle, s:c38_log_sources[0])
   else
     let l:items = []
     for l:src in s:c38_log_sources
       call add(l:items, {'label': l:src.label, 'value': l:src})
     endfor
     call s:show_picker('C38 — Search Logs', l:items,
-      \ function('s:on_log_source_picked', [l:soc]))
+      \ function('s:on_log_source_picked', [l:soc, a:vehicle]))
   endif
 endfunction
 
-function! s:on_log_source_picked(board, item) abort
-  call s:do_search_logs_prompt(a:board, a:item.value)
+function! s:on_log_source_picked(board, vehicle, item) abort
+  call s:do_search_logs_prompt(a:board, a:vehicle, a:item.value)
 endfunction
 
-function! s:do_search_logs_prompt(board, source) abort
+function! s:do_search_logs_prompt(board, vehicle, source) abort
   let l:term = input(printf('[SkyRG] Search %s for (empty=all): ', a:source.label))
   " Merge all matching files and sort by timestamp.
   " logcat format: MM-DD HH:MM:SS.mmm  — sort -t' ' -k1,2 gives time order.
@@ -423,11 +425,8 @@ function! s:do_search_logs_prompt(board, source) abort
       \ a:board.host, a:source.dir, a:source.glob, escape(l:term, "'"))
     let l:title = printf('C38 %s grep: %s', a:source.label, l:term)
   endif
-  let l:meta = {
-    \ 'Host': a:board.host,
-    \ 'Board': a:board.name,
-    \ 'Source': a:source.dir . '/' . a:source.glob,
-    \ }
+  let l:meta = s:device_meta(a:board, a:vehicle)
+  let l:meta['Source'] = a:source.dir . '/' . a:source.glob
   if !empty(l:term)
     let l:meta['Search'] = l:term
   endif
@@ -487,4 +486,17 @@ endfunction
 
 function! s:with_board_pick(Callback, vehicle) abort
   call skyrg#views#device#pick_board(a:vehicle, a:Callback)
+endfunction
+
+" Build a standard meta dict for device-related live_splits.
+" Includes Device (hostname), Type, Host, and Board.
+function! s:device_meta(board, vehicle) abort
+  let l:meta = {}
+  if has_key(a:vehicle, 'hostname') && !empty(a:vehicle.hostname)
+    let l:meta['Device'] = a:vehicle.hostname
+  endif
+  let l:meta['Type'] = a:vehicle.type
+  let l:meta['Host'] = a:board.host
+  let l:meta['Board'] = a:board.name
+  return l:meta
 endfunction
