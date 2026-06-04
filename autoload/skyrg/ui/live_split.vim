@@ -41,7 +41,7 @@ function! skyrg#ui#live_split#open(opts) abort
 
   execute 'botright ' . l:height . 'new'
   setlocal buftype=nofile bufhidden=wipe noswapfile nobuflisted
-  execute 'file' fnameescape('[SkyRG] ' . l:title)
+  execute 'file' fnameescape('[SkyRG #' . l:id . '] ' . l:title)
   call skyrg#ui#style#apply_log()
   nnoremap <buffer> <silent> q :call skyrg#ui#live_split#close_current()<CR>
   nnoremap <buffer> <silent> w :call skyrg#ui#live_split#save_current()<CR>
