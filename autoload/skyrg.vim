@@ -141,6 +141,12 @@ endfunction
 " Hot-reload: re-source all autoload files and plugin entry point
 "==============================================================================
 function! skyrg#reload() abort
+  " Defer actual reload to avoid "function in use" error when called
+  " from within action#dispatch (which is on the call stack)
+  call timer_start(0, function('s:do_reload'))
+endfunction
+
+function! s:do_reload(timer) abort
   " Snapshot state that will be lost when s: vars reinitialize
   let l:had_tasks = !empty(skyrg#backend#tasks#running())
 
