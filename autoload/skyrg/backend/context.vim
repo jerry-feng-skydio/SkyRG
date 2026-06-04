@@ -250,6 +250,62 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#device#refresh(ctx)},
     \ },
     \ {
+    \   'name': 'Open workflow',
+    \   'key': 'o',
+    \   'group': 'workflows',
+    \   'priority': 10,
+    \   'execute': {ctx -> skyrg#views#workflows#open(ctx)},
+    \ },
+    \ {
+    \   'name': 'New workflow',
+    \   'key': 'n',
+    \   'group': 'workflows',
+    \   'priority': 11,
+    \   'execute': {ctx -> skyrg#views#workflows#create(ctx)},
+    \ },
+    \ {
+    \   'name': 'Delete workflow',
+    \   'key': 'd',
+    \   'group': 'workflows',
+    \   'priority': 12,
+    \   'execute': {ctx -> skyrg#views#workflows#delete(ctx)},
+    \ },
+    \ {
+    \   'name': 'Rename workflow',
+    \   'key': 'r',
+    \   'group': 'workflows',
+    \   'priority': 13,
+    \   'execute': {ctx -> skyrg#views#workflows#rename(ctx)},
+    \ },
+    \ {
+    \   'name': 'Copy workflow',
+    \   'key': 'c',
+    \   'group': 'workflows',
+    \   'priority': 14,
+    \   'execute': {ctx -> skyrg#views#workflows#copy(ctx)},
+    \ },
+    \ {
+    \   'name': 'Grep workflows',
+    \   'key': 'g',
+    \   'group': 'workflows',
+    \   'priority': 15,
+    \   'execute': {ctx -> skyrg#views#workflows#grep(ctx)},
+    \ },
+    \ {
+    \   'name': 'Edit most recent workflow',
+    \   'key': 'e',
+    \   'group': 'workflows',
+    \   'priority': 16,
+    \   'execute': {ctx -> skyrg#views#workflows#edit_recent(ctx)},
+    \ },
+    \ {
+    \   'name': 'Open workflows directory',
+    \   'key': '.',
+    \   'group': 'workflows',
+    \   'priority': 17,
+    \   'execute': {ctx -> skyrg#views#workflows#open_dir(ctx)},
+    \ },
+    \ {
     \   'name': 'Record workflow',
     \   'label_fn': {ctx -> skyrg#backend#workflow#is_recording()
     \     ? '⏹ Stop recording: ' . skyrg#backend#workflow#name()
