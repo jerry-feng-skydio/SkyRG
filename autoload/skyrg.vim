@@ -6,6 +6,7 @@
 " Requires: ripgrep, fzf.vim
 
 let s:RG_BASE = 'rg --column --line-number --no-heading --color=always --smart-case'
+let s:plugin_root = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
 
 "==============================================================================
 " Public API
@@ -147,7 +148,7 @@ function! skyrg#reload() abort
   " (global.vim calls watch_usb() which starts a new one)
   call skyrg#backend#device#unwatch_usb()
 
-  let l:root = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
+  let l:root = s:plugin_root
   " Re-source all autoload files (order doesn't matter for autoload)
   for l:f in glob(l:root . '/autoload/skyrg/**/*.vim', 0, 1)
     execute 'source' fnameescape(l:f)
