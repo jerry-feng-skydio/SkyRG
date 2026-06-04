@@ -13,6 +13,7 @@
 "     \ 'cmd': 'ssh host tail -f /var/log/syslog',  " required for source=job
 "     \ 'cwd': '/some/dir',      " optional, for source=job
 "     \ 'height': 10,            " optional, default g:skyrg_log_height
+"     \ 'meta': {'Host': 'soc', 'Filter': 'ucon'},  " optional, header block
 "     \ })
 "
 "   call skyrg#ui#live_split#close(id)       " close split + stop source
@@ -46,6 +47,12 @@ function! skyrg#ui#live_split#open(opts) abort
   nnoremap <buffer> <silent> q :call skyrg#ui#live_split#close_current()<CR>
   nnoremap <buffer> <silent> w :call skyrg#ui#live_split#save_current()<CR>
   nnoremap <buffer> <silent> y :call skyrg#ui#live_split#yank_current()<CR>
+
+  " Render meta header if provided
+  let l:meta = get(a:opts, 'meta', {})
+  if !empty(l:meta)
+    call setline(1, skyrg#ui#live_split#format_header(l:title, l:meta))
+  endif
 
   let l:bufnr = bufnr('%')
   let l:entry = {
@@ -289,6 +296,42 @@ function! s:id_for_bufnr(bufnr) abort
     endif
   endfor
   return -1
+endfunction
+
+"==============================================================================
+" Header formatter
+"==============================================================================
+
+" Format a titled header block from a dict of key-value metadata.
+" Returns a list of lines. Reusable across any buffer or output.
+"
+" Example:
+"   skyrg#ui#live_split#format_header('C38 tail ucon', {
+"     \ 'Host': 'soc',
+"     \ 'Filter': 'ucon',
+"     \ 'Path': '/data/vendor/logs/...',
+"     \ })
+"   =>  ['=== C38 tail ucon ===',
+"        'Host:     soc',
+"        'Filter:   ucon',
+"        'Path:     /data/vendor/logs/...',
+"        'Time:     2026-06-03 19:00:00',
+"        '============================================================',
+"        '']
+function! skyrg#ui#live_split#format_header(title, meta) abort
+  let l:lines = ['=== ' . a:title . ' ===']
+  " Right-align keys for neat output
+  let l:max_key = 0
+  for l:k in keys(a:meta)
+    let l:max_key = max([l:max_key, len(l:k)])
+  endfor
+  for [l:k, l:v] in items(a:meta)
+    call add(l:lines, printf('%-' . l:max_key . 's  %s', l:k . ':', l:v))
+  endfor
+  call add(l:lines, printf('%-' . l:max_key . 's  %s', 'Time:', strftime('%Y-%m-%d %H:%M:%S')))
+  call add(l:lines, repeat('=', 60))
+  call add(l:lines, '')
+  return l:lines
 endfunction
 
 "==============================================================================

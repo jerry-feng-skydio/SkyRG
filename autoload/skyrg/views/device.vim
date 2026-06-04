@@ -193,6 +193,7 @@ function! s:on_c38_tail_picked(board, item) abort
     \ 'title': l:f.title,
     \ 'source': 'job',
     \ 'cmd': printf('ssh %s logcat | grep --line-buffered "%s"', a:board.host, l:f.grep),
+    \ 'meta': {'Host': a:board.host, 'Board': a:board.name, 'Filter': l:f.grep},
     \ })
 endfunction
 
@@ -422,10 +423,19 @@ function! s:do_search_logs_prompt(board, source) abort
       \ a:board.host, a:source.dir, a:source.glob, escape(l:term, "'"))
     let l:title = printf('C38 %s grep: %s', a:source.label, l:term)
   endif
+  let l:meta = {
+    \ 'Host': a:board.host,
+    \ 'Board': a:board.name,
+    \ 'Source': a:source.dir . '/' . a:source.glob,
+    \ }
+  if !empty(l:term)
+    let l:meta['Search'] = l:term
+  endif
   call skyrg#ui#live_split#open({
     \ 'title': l:title,
     \ 'source': 'job',
     \ 'cmd': l:cmd,
+    \ 'meta': l:meta,
     \ })
 endfunction
 
