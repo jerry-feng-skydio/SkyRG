@@ -543,7 +543,17 @@ function! s:render_agent_hint(hint) abort
 endfunction
 
 " Find .windsurf/workflows/ relative to the current project root.
+" Respects g:skyrg_workflows_dir if set for local-only workflows.
 function! s:find_workflows_dir() abort
+  " Check for configured local-only directory first
+  if !empty(get(g:, 'skyrg_workflows_dir', ''))
+    let l:configured = expand(g:skyrg_workflows_dir)
+    if !isdirectory(l:configured)
+      call mkdir(l:configured, 'p')
+    endif
+    return l:configured
+  endif
+
   " Walk up from cwd looking for .windsurf/
   let l:dir = getcwd()
   let l:prev = ''
