@@ -175,14 +175,15 @@ function! s:ssh_directories(board) abort
   let l:dirs = []
 
   if l:name ==# 'SOC'
-    " C38 SOC — root filesystem, logging/analytics paths
+    " C38 SOC — SKYDIO_DIR_PATH=/odm, SEMI_PERSISTENT_OVERRIDE_PATH=/data/vendor
+    " ProcessLogsPath uses InternalLogsPathAccessory (/data/vendor/logs)
     call extend(l:dirs, [
       \ {'label': '/  (root)',                                    'value': '/'},
       \ {'label': '/data/vendor/logs/process_logs/latest/',       'value': '/data/vendor/logs/process_logs/latest'},
-      \ {'label': '/home/skydio/semi_persistent/analytics/',      'value': '/home/skydio/semi_persistent/analytics'},
-      \ {'label': '/home/skydio/semi_persistent/syslog/',         'value': '/home/skydio/semi_persistent/syslog'},
-      \ {'label': '/home/skydio/emmc_logs/',                      'value': '/home/skydio/emmc_logs'},
-      \ {'label': '/home/skydio/semi_persistent/',                'value': '/home/skydio/semi_persistent'},
+      \ {'label': '/data/vendor/analytics/',                      'value': '/data/vendor/analytics'},
+      \ {'label': '/data/vendor/syslog/',                         'value': '/data/vendor/syslog'},
+      \ {'label': '/data/vendor/',                                'value': '/data/vendor'},
+      \ {'label': '/odm/',                                        'value': '/odm'},
       \ ])
   else
     " NVU, QCU, etc. — home directory + common paths
