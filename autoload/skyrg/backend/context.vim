@@ -197,6 +197,7 @@ function! s:ensure_builtins() abort
     \   'group': 'device',
     \   'priority': 81,
     \   'predicate': {ctx -> skyrg#backend#device#is_connected()},
+    \   'agent_hint': 'capture_output',
     \   'execute': {ctx -> skyrg#views#device#tail_logs(ctx)},
     \ },
     \ {
@@ -205,6 +206,7 @@ function! s:ensure_builtins() abort
     \   'group': 'device',
     \   'priority': 82,
     \   'predicate': {ctx -> skyrg#backend#device#is_connected()},
+    \   'agent_hint': 'read_file',
     \   'execute': {ctx -> skyrg#views#device#view_file(ctx)},
     \ },
     \ {
@@ -213,6 +215,7 @@ function! s:ensure_builtins() abort
     \   'group': 'device',
     \   'priority': 83,
     \   'predicate': {ctx -> skyrg#backend#device#is_connected()},
+    \   'agent_hint': 'run_command',
     \   'execute': {ctx -> skyrg#views#device#ssh(ctx)},
     \ },
     \ {
@@ -261,6 +264,7 @@ function! s:ensure_builtins() abort
     \   'group': 'live_split',
     \   'priority': 90,
     \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'agent_hint': 'read_file',
     \   'execute': {ctx -> skyrg#ui#live_split#save_current()},
     \ },
     \ {
@@ -269,6 +273,7 @@ function! s:ensure_builtins() abort
     \   'group': 'live_split',
     \   'priority': 91,
     \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'agent_hint': 'read_output',
     \   'execute': {ctx -> skyrg#ui#live_split#yank_current()},
     \ },
     \ {
@@ -277,6 +282,7 @@ function! s:ensure_builtins() abort
     \   'group': 'live_split',
     \   'priority': 91,
     \   'predicate': {ctx -> skyrg#ui#live_split#is_live_split(bufnr('%'))},
+    \   'agent_hint': 'skip',
     \   'execute': {ctx -> skyrg#ui#live_split#close_current()},
     \ },
     \ ])

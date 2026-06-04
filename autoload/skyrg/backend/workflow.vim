@@ -86,9 +86,16 @@ function! skyrg#backend#workflow#capture(action, ctx, resolved_cmd) abort
   let l:step = {
     \ 'name': a:action.name,
     \ 'group': get(a:action, 'group', ''),
+    \ 'agent_hint': get(a:action, 'agent_hint', ''),
     \ 'timestamp': localtime(),
     \ 'inputs': skyrg#ui#input#harvest(),
     \ }
+
+  " Skip steps the agent should ignore (e.g. 'Close live split')
+  if l:step.agent_hint ==# 'skip'
+    call skyrg#log#info('workflow', 'skipped step (agent_hint=skip): %s', a:action.name)
+    return
+  endif
 
   " Determine step type and content
   if !empty(a:resolved_cmd)
@@ -192,6 +199,13 @@ function! s:render_workflow(name, steps, mode) abort
       endif
     endif
 
+    " Agent hint annotation
+    let l:hint = get(l:s, 'agent_hint', '')
+    if !empty(l:hint)
+      call add(l:lines, '')
+      call add(l:lines, s:render_agent_hint(l:hint))
+    endif
+
     " Show user inputs if any
     if !empty(get(l:s, 'inputs', {}))
       call add(l:lines, '')
@@ -214,6 +228,18 @@ function! s:render_workflow(name, steps, mode) abort
     \ ])
 
   return l:lines
+endfunction
+
+" Translate agent_hint codes into clear instructions for agentic assistants.
+function! s:render_agent_hint(hint) abort
+  let l:hints = {
+    \ 'capture_output': '> **Agent:** Run this command and capture its stdout. The output is needed for the next step.',
+    \ 'read_output':    '> **Agent:** Read and analyze the output from the previous command. This replaces the human step of copying to clipboard.',
+    \ 'read_file':      '> **Agent:** Read the file produced or referenced by this step.',
+    \ 'run_command':    '> **Agent:** Run this command non-interactively. If it requires a shell, use `ssh <host> "<command>"` instead of an interactive session.',
+    \ 'wait_ready':     '> **Agent:** Poll until this condition is met before proceeding (e.g. `ssh -o ConnectTimeout=5 <host> true`).',
+    \ }
+  return get(l:hints, a:hint, printf('> **Agent:** (%s)', a:hint))
 endfunction
 
 " Find .windsurf/workflows/ relative to the current project root.
