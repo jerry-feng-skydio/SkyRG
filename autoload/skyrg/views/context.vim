@@ -42,10 +42,20 @@ function! skyrg#views#context#open(mode) abort
   call skyrg#log#info('views/context', 'open mode=%s page=%d actions=%d',
     \ a:mode, l:page, len(s:page_actions))
 
-  " Calculate position (cursor-relative)
+  " Calculate position — smart: open below cursor in upper half,
+  " above cursor in lower half, so the popup doesn't cover the
+  " code the user is referencing or the command-line input zone.
   let l:pos = screenpos(win_getid(), line('.'), col('.'))
-  let l:line = l:pos.row + 1
   let l:col = l:pos.col
+  if l:pos.row > (&lines / 2)
+    " Cursor in lower half — open above
+    let l:line = l:pos.row - 1
+    let l:anchor = 'botleft'
+  else
+    " Cursor in upper half — open below
+    let l:line = l:pos.row + 1
+    let l:anchor = 'topleft'
+  endif
 
   " Close any existing popup
   if s:popup_id | silent! call popup_close(s:popup_id) | endif
@@ -55,7 +65,7 @@ function! skyrg#views#context#open(mode) abort
   let s:popup_id = popup_create(s:render(), {
     \ 'line': l:line,
     \ 'col': l:col,
-    \ 'pos': 'topleft',
+    \ 'pos': l:anchor,
     \ 'minwidth': 40,
     \ 'maxwidth': 60,
     \ 'padding': [0, 1, 0, 1],
