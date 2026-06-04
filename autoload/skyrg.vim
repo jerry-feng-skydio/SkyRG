@@ -156,10 +156,12 @@ function! s:do_reload(timer) abort
 
   let l:root = s:plugin_root
   " Re-source all autoload files (order doesn't matter for autoload)
+  " Skip skyrg.vim itself to avoid redefining s:do_reload while it's running
   for l:f in glob(l:root . '/autoload/skyrg/**/*.vim', 0, 1)
-    execute 'source' fnameescape(l:f)
+    if l:f !=# l:root . '/autoload/skyrg.vim'
+      execute 'source' fnameescape(l:f)
+    endif
   endfor
-  execute 'source' fnameescape(l:root . '/autoload/skyrg.vim')
   " Re-source plugin entry point (bypass load guard)
   let g:skyrg_reloading = 1
   execute 'source' fnameescape(l:root . '/plugin/skyrg.vim')
