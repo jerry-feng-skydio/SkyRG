@@ -405,18 +405,22 @@ function! s:on_log_source_picked(board, item) abort
 endfunction
 
 function! s:do_search_logs_prompt(board, source) abort
-  let l:term = input(printf('[SkyRG] Search %s for: ', a:source.label))
-  if empty(l:term) | return | endif
-  " Grep across all matching files, then sort by timestamp.
+  let l:term = input(printf('[SkyRG] Search %s for (empty=all): ', a:source.label))
+  " Merge all matching files and sort by timestamp.
   " logcat format: MM-DD HH:MM:SS.mmm  — sort -t' ' -k1,2 gives time order.
-  let l:cmd = printf(
-    \ 'ssh %s "grep -h ''%s'' %s/%s | sort -t'' '' -k1,2 -s"',
-    \ a:board.host,
-    \ escape(l:term, "'"),
-    \ a:source.dir,
-    \ a:source.glob)
+  if empty(l:term)
+    let l:cmd = printf(
+      \ 'ssh %s "cat %s/%s | sort -t'' '' -k1,2 -s"',
+      \ a:board.host, a:source.dir, a:source.glob)
+    let l:title = printf('C38 %s (all)', a:source.label)
+  else
+    let l:cmd = printf(
+      \ 'ssh %s "grep -h ''%s'' %s/%s | sort -t'' '' -k1,2 -s"',
+      \ a:board.host, escape(l:term, "'"), a:source.dir, a:source.glob)
+    let l:title = printf('C38 %s grep: %s', a:source.label, l:term)
+  endif
   call skyrg#ui#live_split#open({
-    \ 'title': printf('C38 %s grep: %s', a:source.label, l:term),
+    \ 'title': l:title,
     \ 'source': 'job',
     \ 'cmd': l:cmd,
     \ })
