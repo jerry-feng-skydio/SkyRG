@@ -1,17 +1,19 @@
-" autoload/skyrg/views/context.vim — Context popup view
+" autoload/skyrg/views/context.vim — Paginated context popup view
 "
-" Shows a cursor-relative action menu with context-aware filtering.
-" Actions are provided by the context backend. Users trigger this
-" via a key mapping (g:skyrg_context_key).
+" Shows a cursor-relative action menu organized into pages (domains).
+" Pages are navigated via Left/Right arrows or number keys 0-9.
+" Actions within a page are selected via Up/Down or shortcut keys.
 "
-" See docs/architecture/context-popup.md for the full spec.
+" Page configuration lives in g:skyrg_pages and g:skyrg_group_pages.
+" See backend/context_pages.vim for the page management engine.
 "
 " Usage:
 "   call skyrg#views#context#open('n')   " normal mode
 "   call skyrg#views#context#open('v')   " visual mode
 
 let s:popup_id = 0
-let s:actions = []
+let s:all_actions = []   " all registered actions (unfiltered)
+let s:page_actions = []  " actions for the current page (filtered)
 let s:ctx = {}
 let s:selected = 0
 
@@ -23,54 +25,60 @@ function! skyrg#views#context#open(mode) abort
   " Build context from cursor position
   let s:ctx = s:build_context(a:mode)
 
-  " Get filtered actions
-  let s:actions = skyrg#backend#context#get(s:ctx)
-  if empty(s:actions)
+  " Get all actions that pass their predicates
+  let s:all_actions = skyrg#backend#context#get_all()
+
+  " Determine which page to open
+  let l:page = skyrg#backend#context_pages#resolve_open_page(s:all_actions, s:ctx)
+  if l:page < 0
     echo '[SkyRG] No actions available'
     return
   endif
+  call skyrg#backend#context_pages#set_current(l:page)
+  call s:load_page()
 
-  let s:selected = 0
-  call skyrg#log#info('views/context', 'open mode=%s actions=%d word="%s"',
-    \ a:mode, len(s:actions), s:ctx.word)
-
-  " Build popup content
-  let l:lines = s:render()
+  call skyrg#log#info('views/context', 'open mode=%s page=%d actions=%d',
+    \ a:mode, l:page, len(s:page_actions))
 
   " Calculate position (cursor-relative)
   let l:pos = screenpos(win_getid(), line('.'), col('.'))
   let l:line = l:pos.row + 1
   let l:col = l:pos.col
 
-  " Determine width from longest action label
-  let l:max_w = 0
-  for l:a in s:actions
-    let l:label = has_key(l:a, 'label_fn') ? l:a.label_fn(s:ctx) : l:a.name
-    let l:w = len(l:label) + 6
-    if l:w > l:max_w | let l:max_w = l:w | endif
-  endfor
-
   " Close any existing popup
   if s:popup_id | silent! call popup_close(s:popup_id) | endif
 
   " Create popup
   call skyrg#ui#style#init()
-  let s:popup_id = popup_create(l:lines, {
+  let s:popup_id = popup_create(s:render(), {
     \ 'line': l:line,
     \ 'col': l:col,
     \ 'pos': 'topleft',
-    \ 'width': l:max_w,
+    \ 'minwidth': 40,
+    \ 'maxwidth': 60,
     \ 'padding': [0, 1, 0, 1],
     \ 'border': [1, 1, 1, 1],
     \ 'borderchars': ['─', '│', '─', '│', '╭', '╮', '╯', '╰'],
     \ 'borderhighlight': ['Title'],
     \ 'highlight': 'Normal',
-    \ 'title': ' Actions ',
+    \ 'title': s:render_title(),
     \ 'filter': function('s:on_key'),
     \ 'mapping': 0,
     \ 'callback': function('s:on_close'),
     \ 'zindex': 300,
     \ })
+endfunction
+
+"==============================================================================
+" Page loading
+"==============================================================================
+
+" Load actions for the current page and reset selection.
+function! s:load_page() abort
+  let l:page = skyrg#backend#context_pages#current()
+  let s:page_actions = skyrg#backend#context_pages#actions_for_page(
+    \ l:page, s:all_actions, s:ctx)
+  let s:selected = 0
 endfunction
 
 "==============================================================================
@@ -116,32 +124,56 @@ function! s:on_key(winid, key) abort
     return 1
   endif
 
-  " Up/Down: navigate
+  " Left/Right: navigate pages
+  if a:key ==# "\<Left>"
+    call skyrg#backend#context_pages#navigate(-1, s:all_actions, s:ctx)
+    call s:load_page()
+    call s:refresh_popup(a:winid)
+    return 1
+  endif
+  if a:key ==# "\<Right>"
+    call skyrg#backend#context_pages#navigate(1, s:all_actions, s:ctx)
+    call s:load_page()
+    call s:refresh_popup(a:winid)
+    return 1
+  endif
+
+  " Number keys: jump to page
+  if a:key =~# '[0-9]'
+    let l:idx = str2nr(a:key)
+    call skyrg#backend#context_pages#jump(l:idx, s:all_actions, s:ctx)
+    call s:load_page()
+    call s:refresh_popup(a:winid)
+    return 1
+  endif
+
+  " Up/Down: navigate actions within page
   if a:key ==# "\<Up>" || a:key ==# 'k'
     let s:selected = max([0, s:selected - 1])
     call popup_settext(a:winid, s:render())
     return 1
   endif
   if a:key ==# "\<Down>" || a:key ==# 'j'
-    let s:selected = min([len(s:actions) - 1, s:selected + 1])
+    let s:selected = min([len(s:page_actions) - 1, s:selected + 1])
     call popup_settext(a:winid, s:render())
     return 1
   endif
 
   " Enter: execute selected action
   if a:key ==# "\<CR>"
-    let l:action = s:actions[s:selected]
+    if empty(s:page_actions) | return 1 | endif
+    let l:action = s:page_actions[s:selected]
     call skyrg#log#info('views/context', 'execute "%s"', l:action.name)
     call popup_close(a:winid)
     call skyrg#backend#context#execute(l:action, s:ctx)
     return 1
   endif
 
-  " Shortcut: find action by key
-  if len(a:key) == 1 && a:key =~# '[a-zA-Z!@#$%^&*]'
-    for l:i in range(len(s:actions))
-      if get(s:actions[l:i], 'key', '') ==# a:key
-        let l:action = s:actions[l:i]
+  " Shortcut: find action by key within current page
+  if len(a:key) == 1 && a:key =~# '[a-zA-Z!@#$%^&*`]'
+    for l:i in range(len(s:page_actions))
+      if get(s:page_actions[l:i], 'key', '') ==# a:key
+        let l:action = s:page_actions[l:i]
         call skyrg#log#info('views/context', 'execute "%s" (key=%s)', l:action.name, a:key)
         call popup_close(a:winid)
         call skyrg#backend#context#execute(l:action, s:ctx)
@@ -159,14 +191,47 @@ function! s:on_close(id, result) abort
 endfunction
 
 "==============================================================================
+" Popup refresh (page change)
+"==============================================================================
+
+function! s:refresh_popup(winid) abort
+  call popup_settext(a:winid, s:render())
+  call popup_setoptions(a:winid, {'title': s:render_title()})
+endfunction
+
+"==============================================================================
 " Rendering
 "==============================================================================
 
+" Render the popup title as a tab bar showing visible pages.
+function! s:render_title() abort
+  let l:visible = skyrg#backend#context_pages#visible_pages(s:all_actions, s:ctx)
+  let l:cur = skyrg#backend#context_pages#current()
+  let l:parts = []
+  for l:idx in l:visible
+    let l:page = skyrg#backend#context_pages#get_page(l:idx)
+    let l:name = get(l:page, 'name', string(l:idx))
+    if l:idx == l:cur
+      call add(l:parts, printf('[%d:%s]', l:idx, l:name))
+    else
+      call add(l:parts, printf(' %d:%s ', l:idx, l:name))
+    endif
+  endfor
+  return ' ' . join(l:parts, '') . ' '
+endfunction
+
+" Render the action list for the current page.
 function! s:render() abort
   let l:lines = []
+
+  if empty(s:page_actions)
+    call add(l:lines, {'text': '  (no actions on this page)'})
+    return l:lines
+  endif
+
   let l:prev_group = ''
-  for l:i in range(len(s:actions))
-    let l:a = s:actions[l:i]
+  for l:i in range(len(s:page_actions))
+    let l:a = s:page_actions[l:i]
     let l:group = get(l:a, 'group', '')
     " Group separator
     if !empty(l:group) && l:group !=# l:prev_group && l:i > 0
@@ -187,5 +252,10 @@ function! s:render() abort
       call add(l:lines, empty(l:props) ? {'text': l:text} : {'text': l:text, 'props': l:props})
     endif
   endfor
+
+  " Footer hint
+  call add(l:lines, {'text': ''})
+  call add(l:lines, {'text': '  ← → page  0-9 jump  Esc close'})
+
   return l:lines
 endfunction

@@ -75,6 +75,13 @@ function! skyrg#backend#context#get(ctx) abort
   return l:result
 endfunction
 
+" Return all registered actions (no predicate filtering).
+" Used by the paginated popup which handles filtering per-page.
+function! skyrg#backend#context#get_all() abort
+  call s:ensure_builtins()
+  return copy(s:actions)
+endfunction
+
 " Execute an action with the given context.
 " Routes through the action dispatch engine which handles vim/shell/job types.
 function! skyrg#backend#context#execute(action, ctx) abort
