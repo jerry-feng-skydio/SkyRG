@@ -163,6 +163,24 @@ function! s:run_interactive(action, ctx) abort
 endfunction
 
 function! s:on_term_exit(task_id, job, exit_code) abort
+  " Capture terminal buffer output before the buffer closes.
+  " Interactive sessions don't use out_cb/err_cb, so this is the
+  " only chance to get their output into the task log.
+  let l:task = skyrg#backend#tasks#get(a:task_id)
+  if !empty(l:task) && has_key(l:task, 'term_buf') && bufexists(l:task.term_buf)
+    let l:lines = getbufline(l:task.term_buf, 1, '$')
+    " Bounded to last 200 lines to keep log size reasonable
+    let l:limit = 200
+    if len(l:lines) > l:limit
+      call skyrg#backend#action_log#append(l:task.log_file, 'stdout',
+        \ printf('... (%d lines truncated)', len(l:lines) - l:limit))
+      let l:lines = l:lines[-l:limit :]
+    endif
+    for l:line in l:lines
+      call skyrg#backend#action_log#append(l:task.log_file, 'stdout', l:line)
+    endfor
+  endif
+
   let l:task = skyrg#backend#tasks#complete(a:task_id, a:exit_code)
   if empty(l:task) | return | endif
 

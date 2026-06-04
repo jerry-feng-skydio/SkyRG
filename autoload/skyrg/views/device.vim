@@ -158,9 +158,15 @@ function! s:do_ssh(board) abort
 endfunction
 
 function! s:ssh_connect(board, dir) abort
-  let l:cmd = empty(a:dir)
-    \ ? 'ssh ' . a:board.host
-    \ : printf('ssh -t %s "cd %s && exec \\$SHELL -l"', a:board.host, shellescape(a:dir))
+  let l:platform = get(a:board, 'platform', 'linux')
+  if empty(a:dir)
+    let l:cmd = 'ssh ' . a:board.host
+  elseif l:platform ==# 'android'
+    " Android: no /bin/bash, use sh directly
+    let l:cmd = printf('ssh -t %s "cd %s && exec sh"', a:board.host, shellescape(a:dir))
+  else
+    let l:cmd = printf('ssh -t %s "cd %s && exec \\$SHELL -l"', a:board.host, shellescape(a:dir))
+  endif
   call skyrg#backend#action#dispatch({
     \ 'name': 'SSH ' . a:board.name,
     \ 'job': l:cmd,
