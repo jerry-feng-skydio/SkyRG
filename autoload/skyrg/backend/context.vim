@@ -270,6 +270,15 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> s:describe_workflow_step()},
     \ },
     \ {
+    \   'name': 'Show workflow preview',
+    \   'key': 'P',
+    \   'group': 'debug',
+    \   'priority': 97,
+    \   'no_history': 1,
+    \   'predicate': {ctx -> skyrg#backend#workflow#is_recording()},
+    \   'execute': {ctx -> skyrg#backend#workflow#show_preview()},
+    \ },
+    \ {
     \   'name': 'Reload plugin',
     \   'key': 'r',
     \   'group': 'debug',
