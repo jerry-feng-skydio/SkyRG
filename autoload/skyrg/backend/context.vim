@@ -94,7 +94,15 @@ endfunction
 
 function! s:toggle_workflow() abort
   if skyrg#backend#workflow#is_recording()
-    call skyrg#backend#workflow#stop()
+    let l:choice = confirm(
+      \ printf('[SkyRG] Recording: %s (%d steps)',
+      \   skyrg#backend#workflow#name(), skyrg#backend#workflow#step_count()),
+      \ "&Export\n&Discard", 1)
+    if l:choice == 1
+      call skyrg#backend#workflow#stop()
+    elseif l:choice == 2
+      call skyrg#backend#workflow#discard()
+    endif
   else
     let l:name = input('[SkyRG] Workflow name: ')
     if empty(l:name) | return | endif

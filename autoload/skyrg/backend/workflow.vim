@@ -64,6 +64,19 @@ function! skyrg#backend#workflow#stop() abort
   call s:export(s:name, s:steps, l:mode)
 endfunction
 
+" Discard current recording without exporting.
+function! skyrg#backend#workflow#discard() abort
+  if !s:recording
+    echohl WarningMsg | echom '[SkyRG] Not recording a workflow' | echohl None
+    return
+  endif
+  call skyrg#log#info('workflow', 'discarded recording "%s" (%d steps)', s:name, len(s:steps))
+  let s:recording = 0
+  let s:steps = []
+  echom printf('[SkyRG] Workflow discarded: %s', s:name)
+  let s:name = ''
+endfunction
+
 " Check if currently recording.
 function! skyrg#backend#workflow#is_recording() abort
   return s:recording
@@ -72,6 +85,11 @@ endfunction
 " Get the current workflow name (for statusline, etc.).
 function! skyrg#backend#workflow#name() abort
   return s:recording ? s:name : ''
+endfunction
+
+" Get the number of steps captured so far.
+function! skyrg#backend#workflow#step_count() abort
+  return len(s:steps)
 endfunction
 
 "==============================================================================
