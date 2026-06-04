@@ -203,6 +203,14 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#device#ssh(ctx)},
     \ },
     \ {
+    \   'name': 'Search device logs',
+    \   'key': 'g',
+    \   'group': 'device',
+    \   'priority': 84,
+    \   'predicate': {ctx -> skyrg#backend#device#is_connected()},
+    \   'execute': {ctx -> skyrg#views#device#search_logs(ctx)},
+    \ },
+    \ {
     \   'name': 'Refresh device detection',
     \   'key': 'R',
     \   'group': 'device',

@@ -356,6 +356,72 @@ function! s:find_aircam_root() abort
   return ''
 endfunction
 
+"==============================================================================
+" Search device logs
+"==============================================================================
+
+" C38 log sources — each entry defines a label, the remote directory, and a
+" file glob.  Add new sources here as needed.
+let s:c38_log_sources = [
+  \ {'label': 'logcat',  'dir': '/data/vendor/logs/process_logs/latest', 'glob': 'logcat*'},
+  \ ]
+
+" Entry point: search device logs for a user-provided term.
+function! skyrg#views#device#search_logs(ctx) abort
+  call s:with_vehicle(a:ctx, function('s:do_search_logs'))
+endfunction
+
+function! s:do_search_logs(vehicle) abort
+  if a:vehicle.type !=# 'C38'
+    echohl WarningMsg | echo '[SkyRG] Log search is only supported on C38' | echohl None
+    return
+  endif
+  let l:soc = {}
+  for l:b in a:vehicle.boards
+    if l:b.name ==# 'SOC'
+      let l:soc = l:b
+      break
+    endif
+  endfor
+  if empty(l:soc)
+    let l:soc = a:vehicle.boards[0]
+  endif
+
+  " If multiple sources, let user pick; otherwise go straight to search
+  if len(s:c38_log_sources) == 1
+    call s:do_search_logs_prompt(l:soc, s:c38_log_sources[0])
+  else
+    let l:items = []
+    for l:src in s:c38_log_sources
+      call add(l:items, {'label': l:src.label, 'value': l:src})
+    endfor
+    call s:show_picker('C38 — Search Logs', l:items,
+      \ function('s:on_log_source_picked', [l:soc]))
+  endif
+endfunction
+
+function! s:on_log_source_picked(board, item) abort
+  call s:do_search_logs_prompt(a:board, a:item.value)
+endfunction
+
+function! s:do_search_logs_prompt(board, source) abort
+  let l:term = input(printf('[SkyRG] Search %s for: ', a:source.label))
+  if empty(l:term) | return | endif
+  " Grep across all matching files, then sort by timestamp.
+  " logcat format: MM-DD HH:MM:SS.mmm  — sort -t' ' -k1,2 gives time order.
+  let l:cmd = printf(
+    \ 'ssh %s "grep -h ''%s'' %s/%s | sort -t'' '' -k1,2 -s"',
+    \ a:board.host,
+    \ escape(l:term, "'"),
+    \ a:source.dir,
+    \ a:source.glob)
+  call skyrg#ui#live_split#open({
+    \ 'title': printf('C38 %s grep: %s', a:source.label, l:term),
+    \ 'source': 'job',
+    \ 'cmd': l:cmd,
+    \ })
+endfunction
+
 " Refresh device detection — re-probe and report.
 function! skyrg#views#device#refresh(ctx) abort
   echo '[SkyRG] Probing devices...'
