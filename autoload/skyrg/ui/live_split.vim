@@ -65,6 +65,11 @@ function! skyrg#ui#live_split#open(opts) abort
     \ 'path': get(a:opts, 'path', ''),
     \ }
 
+  " Workflow capture — record the underlying command for agent workflows
+  if l:source ==# 'job' && skyrg#backend#workflow#is_recording()
+    call skyrg#backend#workflow#capture_raw(l:title, a:opts.cmd, 'capture_output')
+  endif
+
   if l:source ==# 'file'
     " Populate from file, start timer
     let l:path = a:opts.path

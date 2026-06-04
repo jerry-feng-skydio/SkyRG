@@ -113,8 +113,46 @@ function! skyrg#backend#workflow#describe(title, body) abort
 endfunction
 
 "==============================================================================
-" Step capture — called from action#dispatch hook
+" Step capture
 "==============================================================================
+
+" Capture a raw command as a workflow step.
+" Used by subsystems that bypass action#dispatch (e.g. live_split).
+" If there is already a vim-type step with the same name (captured by the
+" top-level dispatch), replace it with this concrete command version.
+function! skyrg#backend#workflow#capture_raw(name, cmd, agent_hint) abort
+  if !s:recording | return | endif
+
+  " Check if the last step is a vim-type placeholder — if so, replace it
+  " with this concrete command. This handles the common pattern where a
+  " top-level vim action (e.g. "Tail device logs") dispatches a job
+  " through a subsystem (e.g. live_split) with a more specific title.
+  if !empty(s:steps)
+    let l:last = s:steps[-1]
+    if l:last.type ==# 'vim'
+      let l:last.name = a:name
+      let l:last.type = 'shell'
+      let l:last.cmd = a:cmd
+      let l:last.agent_hint = a:agent_hint
+      let l:last.interactive = 0
+      call skyrg#log#info('workflow', 'upgraded step %d to shell: %s', len(s:steps), a:name)
+      return
+    endif
+  endif
+
+  call add(s:steps, {
+    \ 'name': a:name,
+    \ 'type': 'shell',
+    \ 'cmd': a:cmd,
+    \ 'agent_hint': a:agent_hint,
+    \ 'group': '',
+    \ 'interactive': 0,
+    \ 'cwd': '',
+    \ 'timestamp': localtime(),
+    \ 'inputs': {},
+    \ })
+  call skyrg#log#info('workflow', 'captured raw step %d: %s', len(s:steps), a:name)
+endfunction
 
 " Capture a dispatched action as a workflow step.
 " Called after action dispatch with the resolved command.
@@ -128,6 +166,12 @@ function! skyrg#backend#workflow#capture(action, ctx, resolved_cmd) abort
     \ 'timestamp': localtime(),
     \ 'inputs': skyrg#ui#input#harvest(),
     \ }
+
+  " Skip workflow control actions (Record, Describe, etc.)
+  if get(a:action, 'no_history', 0)
+    call skyrg#log#info('workflow', 'skipped control action: %s', a:action.name)
+    return
+  endif
 
   " Skip steps the agent should ignore (e.g. 'Close live split')
   if l:step.agent_hint ==# 'skip'
