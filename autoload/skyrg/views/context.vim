@@ -16,6 +16,7 @@ let s:all_actions = []   " all registered actions (unfiltered)
 let s:page_actions = []  " actions for the current page (filtered)
 let s:ctx = {}
 let s:selected = 0
+let s:history_mode = 0   " 1 when showing the history page
 
 "==============================================================================
 " Open
@@ -35,6 +36,7 @@ function! skyrg#views#context#open(mode) abort
     return
   endif
   call skyrg#backend#context_pages#set_current(l:page)
+  let s:history_mode = 0
   call s:load_page()
 
   call skyrg#log#info('views/context', 'open mode=%s page=%d actions=%d',
@@ -124,26 +126,63 @@ function! s:on_key(winid, key) abort
     return 1
   endif
 
-  " Left/Right: navigate pages
+  " Backtick: toggle history page
+  if a:key ==# '`'
+    let s:history_mode = !s:history_mode
+    let s:selected = 0
+    if !s:history_mode
+      call s:load_page()
+    endif
+    call s:refresh_popup(a:winid)
+    return 1
+  endif
+
+  " Left/Right: navigate pages (exit history mode)
   if a:key ==# "\<Left>"
+    let s:history_mode = 0
     call skyrg#backend#context_pages#navigate(-1, s:all_actions, s:ctx)
     call s:load_page()
     call s:refresh_popup(a:winid)
     return 1
   endif
   if a:key ==# "\<Right>"
+    let s:history_mode = 0
     call skyrg#backend#context_pages#navigate(1, s:all_actions, s:ctx)
     call s:load_page()
     call s:refresh_popup(a:winid)
     return 1
   endif
 
-  " Number keys: jump to page
+  " Number keys: jump to page (exit history mode)
   if a:key =~# '[0-9]'
+    let s:history_mode = 0
     let l:idx = str2nr(a:key)
     call skyrg#backend#context_pages#jump(l:idx, s:all_actions, s:ctx)
     call s:load_page()
     call s:refresh_popup(a:winid)
+    return 1
+  endif
+
+  " History mode: Up/Down navigate entries, Enter replays
+  if s:history_mode
+    let l:hcount = skyrg#backend#context_history#count()
+    if a:key ==# "\<Up>" || a:key ==# 'k'
+      let s:selected = max([0, s:selected - 1])
+      call popup_settext(a:winid, s:render())
+      return 1
+    endif
+    if a:key ==# "\<Down>" || a:key ==# 'j'
+      let s:selected = min([l:hcount - 1, s:selected + 1])
+      call popup_settext(a:winid, s:render())
+      return 1
+    endif
+    if a:key ==# "\<CR>"
+      if l:hcount > 0
+        call popup_close(a:winid)
+        call skyrg#backend#context_history#replay(s:selected)
+      endif
+      return 1
+    endif
     return 1
   endif
 
@@ -170,7 +209,7 @@ function! s:on_key(winid, key) abort
   endif
 
   " Shortcut: find action by key within current page
-  if len(a:key) == 1 && a:key =~# '[a-zA-Z!@#$%^&*`]'
+  if len(a:key) == 1 && a:key =~# '[a-zA-Z!@#$%^&*]'
     for l:i in range(len(s:page_actions))
       if get(s:page_actions[l:i], 'key', '') ==# a:key
         let l:action = s:page_actions[l:i]
@@ -205,6 +244,9 @@ endfunction
 
 " Render the popup title as a tab bar showing visible pages.
 function! s:render_title() abort
+  if s:history_mode
+    return ' [`:History]  ← → back '
+  endif
   let l:visible = skyrg#backend#context_pages#visible_pages(s:all_actions, s:ctx)
   let l:cur = skyrg#backend#context_pages#current()
   let l:parts = []
@@ -217,11 +259,15 @@ function! s:render_title() abort
       call add(l:parts, printf(' %d:%s ', l:idx, l:name))
     endif
   endfor
-  return ' ' . join(l:parts, '') . ' '
+  return ' ' . join(l:parts, '') . '  `:Hist '
 endfunction
 
 " Render the action list for the current page.
 function! s:render() abort
+  if s:history_mode
+    return s:render_history()
+  endif
+
   let l:lines = []
 
   if empty(s:page_actions)
@@ -255,7 +301,41 @@ function! s:render() abort
 
   " Footer hint
   call add(l:lines, {'text': ''})
-  call add(l:lines, {'text': '  ← → page  0-9 jump  Esc close'})
+  call add(l:lines, {'text': '  ← → page  0-9 jump  ` hist  Esc close'})
+
+  return l:lines
+endfunction
+
+" Render the history page.
+function! s:render_history() abort
+  let l:lines = []
+  let l:entries = skyrg#backend#context_history#entries()
+
+  if empty(l:entries)
+    call add(l:lines, {'text': '  (no history yet)'})
+    call add(l:lines, {'text': ''})
+    call add(l:lines, {'text': '  ` back  Esc close'})
+    return l:lines
+  endif
+
+  for l:i in range(len(l:entries))
+    let l:e = l:entries[l:i]
+    let l:time = skyrg#backend#context_history#relative_time(l:e.timestamp)
+    let l:text = printf('  %s  %s', l:e.label, l:time)
+    if l:i == s:selected
+      call add(l:lines, skyrg#ui#util#hl_line(l:text, 'skyrg_sel'))
+    else
+      " Dim the time portion
+      let l:time_col = len(l:text) - len(l:time) + 1
+      call add(l:lines, {
+        \ 'text': l:text,
+        \ 'props': [{'col': l:time_col, 'length': len(l:time), 'type': 'skyrg_dim'}],
+        \ })
+    endif
+  endfor
+
+  call add(l:lines, {'text': ''})
+  call add(l:lines, {'text': '  Enter replay  ` back  Esc close'})
 
   return l:lines
 endfunction

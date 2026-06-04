@@ -162,14 +162,6 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#search#open()},
     \ },
     \ {
-    \   'name': 'History browser',
-    \   'key': 'h',
-    \   'group': 'open',
-    \   'priority': 60,
-    \   'predicate': {ctx -> exists('*skyrg#views#history#open')},
-    \   'execute': {ctx -> skyrg#views#history#open()},
-    \ },
-    \ {
     \   'name': 'Revup Topics',
     \   'key': 'r',
     \   'group': 'revup',

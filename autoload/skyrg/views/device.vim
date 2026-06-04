@@ -274,7 +274,7 @@ function! s:do_view_file(board) abort
   let l:hot_paths = s:get_hot_paths(a:board)
   if empty(l:hot_paths)
     " Fallback: prompt for path
-    let l:path = input('[SkyRG] Remote path: ')
+    let l:path = skyrg#ui#input#prompt('remote_path', '[SkyRG] Remote path: ')
     if empty(l:path) | return | endif
     execute 'edit scp://' . a:board.host . '/' . l:path
     return
@@ -316,7 +316,7 @@ function! s:do_build_flashpack(vehicle) abort
   let l:cmd = printf('./skybuild --platform=%s CreateFlashPack', l:platform)
 
   " Let user edit the command before running
-  let l:cmd = input('[SkyRG] Build command: ', l:cmd)
+  let l:cmd = skyrg#ui#input#prompt('build_cmd', '[SkyRG] Build command: ', l:cmd)
   if empty(l:cmd) | return | endif
 
   " Determine aircam root
@@ -408,7 +408,8 @@ function! s:on_log_source_picked(board, vehicle, item) abort
 endfunction
 
 function! s:do_search_logs_prompt(board, vehicle, source) abort
-  let l:term = input(printf('[SkyRG] Search %s for (empty=all): ', a:source.label))
+  let l:term = skyrg#ui#input#prompt('search_term',
+    \ printf('[SkyRG] Search %s for (empty=all): ', a:source.label))
   " Merge all matching files and sort by timestamp.
   " logcat format: MM-DD HH:MM:SS.mmm  — sort -t' ' -k1,2 gives time order.
   " Filter out logcat buffer-switch headers (--------- switch to <buf>)

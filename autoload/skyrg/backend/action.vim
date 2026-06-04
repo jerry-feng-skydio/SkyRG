@@ -17,16 +17,21 @@
 "==============================================================================
 
 function! skyrg#backend#action#dispatch(action, ctx) abort
+  " Reset input capture for history recording
+  call skyrg#ui#input#reset()
+
   " Vim action (existing path)
   if has_key(a:action, 'execute')
     call skyrg#log#info('action', 'dispatch vim: "%s"', a:action.name)
     call a:action.execute(a:ctx)
+    call skyrg#backend#context_history#record(a:action, a:ctx)
     return
   endif
 
   " Shell action (synchronous)
   if has_key(a:action, 'shell')
     call s:run_shell(a:action, a:ctx)
+    call skyrg#backend#context_history#record(a:action, a:ctx)
     return
   endif
 
@@ -38,6 +43,7 @@ function! skyrg#backend#action#dispatch(action, ctx) abort
     else
       call s:run_job(a:action, a:ctx)
     endif
+    call skyrg#backend#context_history#record(a:action, a:ctx)
     return
   endif
 
