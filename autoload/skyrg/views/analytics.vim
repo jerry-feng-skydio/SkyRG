@@ -96,13 +96,13 @@ function! skyrg#views#analytics#open(txtlog_path, vehicle_id) abort
   let s:handle = skyrg#ui#window#open({
     \ 'title': 'Analytics — ' . a:vehicle_id,
     \ 'panes': [
-    \   {'name': 'timeline', 'pane': l:timeline_pane, 'region': 'bot-left', 'flex': 0.50},
-    \   {'name': 'details',  'pane': l:details_pane,  'region': 'bot-right', 'flex': 0.50},
+    \   {'name': 'timeline', 'pane': l:timeline_pane, 'region': 'top-left', 'flex': 0.50},
+    \   {'name': 'details',  'pane': l:details_pane,  'region': 'top-right', 'flex': 0.50},
     \ ],
     \ 'sidepanes': [
     \   {'name': 'types', 'pane': l:types_pane, 'side': 'left', 'width': 44, 'hidden': 0},
     \ ],
-    \ 'top_height': 0,
+    \ 'top_height': &lines - 4,
     \ 'initial_pane': 'timeline',
     \ 'global_keys': function('s:global_keys'),
     \ 'on_close': function('s:on_close'),
