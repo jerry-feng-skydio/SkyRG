@@ -36,15 +36,21 @@ function! skyrg#backend#analytics#parse(path) abort
     return []
   endif
 
-  let l:lines = readfile(a:path)
+  let l:raw_lines = readfile(a:path)
   let l:events = []
 
-  for l:line in l:lines
-    " Only parse lines starting with [timestamp]
-    if l:line !~# '^\['
-      continue
+  " Join continuation lines: lines starting with whitespace belong to the
+  " preceding [timestamp] line.
+  let l:joined = []
+  for l:line in l:raw_lines
+    if l:line =~# '^\['
+      call add(l:joined, l:line)
+    elseif l:line =~# '^\s' && !empty(l:joined)
+      let l:joined[-1] .= ' ' . substitute(l:line, '^\s\+', '', '')
     endif
+  endfor
 
+  for l:line in l:joined
     let l:event = s:parse_line(l:line)
     if !empty(l:event)
       call add(l:events, l:event)

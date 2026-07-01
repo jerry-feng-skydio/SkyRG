@@ -100,7 +100,7 @@ function! skyrg#views#analytics#open(txtlog_path, vehicle_id) abort
     \   {'name': 'details',  'pane': l:details_pane,  'region': 'bot-right', 'flex': 0.50},
     \ ],
     \ 'sidepanes': [
-    \   {'name': 'types', 'pane': l:types_pane, 'side': 'left', 'width': 34, 'hidden': 0},
+    \   {'name': 'types', 'pane': l:types_pane, 'side': 'left', 'width': 44, 'hidden': 0},
     \ ],
     \ 'top_height': 0,
     \ 'initial_pane': 'timeline',
@@ -226,6 +226,13 @@ function! s:update_details(event) abort
     let l:props = [{'col': 3, 'length': len(l:k), 'type': 'skyrg_dim'}]
     call add(l:lines, skyrg#ui#util#line(l:text, l:props))
   endfor
+
+  " Shortcut hints
+  call add(l:lines, {'text': ''})
+  call add(l:lines, skyrg#ui#util#hl_line(
+    \ '  ↑↓ navigate  i ignore  u undo  / search  e export', 'skyrg_dim'))
+  call add(l:lines, skyrg#ui#util#hl_line(
+    \ '  a all  n none  t types  ^L clear  Esc close', 'skyrg_dim'))
 
   call s:state.details_pane.set_lines(l:lines)
 endfunction
