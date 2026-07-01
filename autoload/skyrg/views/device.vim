@@ -204,6 +204,107 @@ function! s:ssh_directories(board) abort
     \ ]
 endfunction
 
+" View analytics events from a C38 device.
+function! skyrg#views#device#view_analytics(ctx) abort
+  call s:with_vehicle(a:ctx, function('s:do_view_analytics'))
+endfunction
+
+" Search analytics events by substring match.
+function! skyrg#views#device#search_analytics(ctx) abort
+  let l:query = input('[SkyRG] Search analytics: ')
+  if empty(l:query) | return | endif
+
+  " Get current buffer path if it's an analytics buffer
+  let l:buf_path = expand('%:p')
+  if l:buf_path !~# '/tmp/c38_analytics_'
+    echohl WarningMsg | echo '[SkyRG] Not in an analytics buffer' | echohl None
+    return
+  endif
+
+  " Use rg to search the txtlog file
+  let l:rg_cmd = printf('rg -i "%s" %s', shellescape(l:query), shellescape(l:buf_path))
+  call skyrg#ui#live_split#open({
+    \ 'title': 'Analytics Search: ' . l:query,
+    \ 'source': 'job',
+    \ 'cmd': l:rg_cmd,
+    \ 'height': 20,
+    \ 'meta': {
+    \   'Query': l:query,
+    \   'Source': l:buf_path,
+    \ },
+    \ })
+endfunction
+
+function! s:do_view_analytics(vehicle) abort
+  if a:vehicle.type !=# 'C38'
+    echohl WarningMsg | echo '[SkyRG] Analytics viewer only supported for C38' | echohl None
+    return
+  endif
+
+  " Get SOC board
+  let l:soc = {}
+  for l:b in a:vehicle.boards
+    if l:b.name ==# 'SOC'
+      let l:soc = l:b
+      break
+    endif
+  endfor
+  if empty(l:soc)
+    echohl WarningMsg | echo '[SkyRG] No SOC board found on C38' | echohl None
+    return
+  endif
+
+  " Create temp directory for analytics
+  let l:timestamp = strftime('%Y%m%d_%H%M%S')
+  let l:local_dir = '/tmp/c38_analytics_' . l:timestamp
+  call mkdir(l:local_dir, 'p')
+
+  echom printf('[SkyRG] Copying analytics from %s to %s...', l:soc.host, l:local_dir)
+  let l:scp_cmd = printf('scp -r %s:/data/vendor/analytics/ %s/', l:soc.host, l:local_dir)
+  let l:output = system(l:scp_cmd)
+  if v:shell_error
+    echohl ErrorMsg
+    echo printf('[SkyRG] Failed to copy analytics (exit %d)', v:shell_error)
+    echohl None
+    return
+  endif
+
+  echom printf('[SkyRG] Converting analytics logs...')
+  let l:aircam_dir = '/home/skydio/aircam'
+  let l:convert_cmd = printf(
+    \ 'cd %s && bazel run tools/analytics_tools/executables:analytics_to_file -- --dir %s --skip-error-reports',
+    \ l:aircam_dir, l:local_dir)
+  let l:output = system(l:convert_cmd)
+  if v:shell_error
+    echohl ErrorMsg
+    echo printf('[SkyRG] Failed to convert analytics (exit %d)', v:shell_error)
+    echohl None
+    return
+  endif
+
+  " Find the txtlog file
+  let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
+  if empty(l:txtlog_files)
+    echohl WarningMsg | echo '[SkyRG] No txtlog files found after conversion' | echohl None
+    return
+  endif
+
+  let l:txtlog_path = l:txtlog_files[0]
+  echom printf('[SkyRG] Opening analytics: %s', l:txtlog_path)
+
+  " Open scratch buffer with txtlog content
+  call skyrg#ui#live_split#open({
+    \ 'title': 'Analytics ' . fnamemodify(l:txtlog_path, ':t'),
+    \ 'source': 'file',
+    \ 'path': l:txtlog_path,
+    \ 'height': 20,
+    \ 'meta': {
+    \   'Host': l:soc.host,
+    \   'Source': l:local_dir,
+    \ },
+    \ })
+endfunction
+
 " Tail logs on a device board.
 function! skyrg#views#device#tail_logs(ctx) abort
   call s:with_vehicle(a:ctx, function('s:do_tail_vehicle'))

@@ -243,6 +243,22 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#device#search_logs(ctx)},
     \ },
     \ {
+    \   'name': 'View analytics',
+    \   'key': 'a',
+    \   'group': 'device',
+    \   'priority': 85,
+    \   'predicate': {ctx -> skyrg#backend#device#is_connected()},
+    \   'execute': {ctx -> skyrg#views#device#view_analytics(ctx)},
+    \ },
+    \ {
+    \   'name': 'Search analytics',
+    \   'key': 's',
+    \   'group': 'device',
+    \   'priority': 86,
+    \   'predicate': {ctx -> expand('%:p') =~# '/tmp/c38_analytics_'},
+    \   'execute': {ctx -> skyrg#views#device#search_analytics(ctx)},
+    \ },
+    \ {
     \   'name': 'Refresh device detection',
     \   'key': 'R',
     \   'group': 'device',
