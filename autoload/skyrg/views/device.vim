@@ -209,32 +209,6 @@ function! skyrg#views#device#view_analytics(ctx) abort
   call s:with_vehicle(a:ctx, function('s:do_view_analytics'))
 endfunction
 
-" Search analytics events by substring match.
-function! skyrg#views#device#search_analytics(ctx) abort
-  let l:query = input('[SkyRG] Search analytics: ')
-  if empty(l:query) | return | endif
-
-  " Get current buffer path if it's an analytics buffer
-  let l:buf_path = expand('%:p')
-  if l:buf_path !~# '/tmp/c38_analytics_'
-    echohl WarningMsg | echo '[SkyRG] Not in an analytics buffer' | echohl None
-    return
-  endif
-
-  " Use rg to search the txtlog file
-  let l:rg_cmd = printf('rg -i "%s" %s', shellescape(l:query), shellescape(l:buf_path))
-  call skyrg#ui#live_split#open({
-    \ 'title': 'Analytics Search: ' . l:query,
-    \ 'source': 'job',
-    \ 'cmd': l:rg_cmd,
-    \ 'height': 20,
-    \ 'meta': {
-    \   'Query': l:query,
-    \   'Source': l:buf_path,
-    \ },
-    \ })
-endfunction
-
 function! s:do_view_analytics(vehicle) abort
   if a:vehicle.type !=# 'C38'
     echohl WarningMsg | echo '[SkyRG] Analytics viewer only supported for C38' | echohl None
@@ -289,20 +263,13 @@ function! s:do_view_analytics(vehicle) abort
     return
   endif
 
+  " Extract vehicle_id from directory structure
+  let l:vehicle_id = fnamemodify(l:txtlog_files[0], ':h:t')
   let l:txtlog_path = l:txtlog_files[0]
-  echom printf('[SkyRG] Opening analytics: %s', l:txtlog_path)
+  echom printf('[SkyRG] Opening analytics viewer: %s', l:txtlog_path)
 
-  " Open scratch buffer with txtlog content
-  call skyrg#ui#live_split#open({
-    \ 'title': 'Analytics ' . fnamemodify(l:txtlog_path, ':t'),
-    \ 'source': 'file',
-    \ 'path': l:txtlog_path,
-    \ 'height': 20,
-    \ 'meta': {
-    \   'Host': l:soc.host,
-    \   'Source': l:local_dir,
-    \ },
-    \ })
+  " Open the multi-pane analytics viewer
+  call skyrg#views#analytics#open(l:txtlog_path, l:vehicle_id)
 endfunction
 
 " Tail logs on a device board.

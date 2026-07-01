@@ -251,14 +251,6 @@ function! s:ensure_builtins() abort
     \   'execute': {ctx -> skyrg#views#device#view_analytics(ctx)},
     \ },
     \ {
-    \   'name': 'Search analytics',
-    \   'key': 's',
-    \   'group': 'device',
-    \   'priority': 86,
-    \   'predicate': {ctx -> expand('%:t') =~# '\.txtlog$' || expand('%:p') =~# '/tmp/c38_analytics_'},
-    \   'execute': {ctx -> skyrg#views#device#search_analytics(ctx)},
-    \ },
-    \ {
     \   'name': 'Refresh device detection',
     \   'key': 'R',
     \   'group': 'device',
