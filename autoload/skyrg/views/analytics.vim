@@ -108,6 +108,9 @@ function! skyrg#views#analytics#open(txtlog_path, vehicle_id) abort
     \ 'on_close': function('s:on_close'),
     \ })
 
+  " Sync pane geometry so list panes render at full height
+  call s:handle.reposition()
+
   call skyrg#log#info('views/analytics', 'opened %d events, %d types',
     \ len(l:all_events), len(l:type_counts))
 endfunction
