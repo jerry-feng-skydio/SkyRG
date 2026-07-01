@@ -255,7 +255,7 @@ function! s:ensure_builtins() abort
     \   'key': 's',
     \   'group': 'device',
     \   'priority': 86,
-    \   'predicate': {ctx -> expand('%:p') =~# '/tmp/c38_analytics_'},
+    \   'predicate': {ctx -> expand('%:t') =~# '\.txtlog$' || expand('%:p') =~# '/tmp/c38_analytics_'},
     \   'execute': {ctx -> skyrg#views#device#search_analytics(ctx)},
     \ },
     \ {
