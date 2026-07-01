@@ -230,12 +230,20 @@ function! s:update_details(event) abort
     call add(l:lines, skyrg#ui#util#line(l:text, l:props))
   endfor
 
-  " Shortcut hints
-  call add(l:lines, {'text': ''})
-  call add(l:lines, skyrg#ui#util#hl_line(
-    \ '  ↑↓ navigate  i ignore  u undo  / search  e export', 'skyrg_dim'))
-  call add(l:lines, skyrg#ui#util#hl_line(
-    \ '  a all  n none  t types  ^L clear  Esc close', 'skyrg_dim'))
+  " Pin shortcut hints to bottom of pane
+  let l:hint_lines = [
+    \ skyrg#ui#util#hl_line(
+    \   '  ↑↓ navigate  i ignore  u undo  / search  e export', 'skyrg_dim'),
+    \ skyrg#ui#util#hl_line(
+    \   '  a all  n none  t types  ^L clear  Esc close', 'skyrg_dim'),
+    \ ]
+  let l:visible = max([s:state.details_pane._geo.height - 2, 6])
+  let l:pad = l:visible - len(l:lines) - len(l:hint_lines)
+  while l:pad > 0
+    call add(l:lines, {'text': ''})
+    let l:pad -= 1
+  endwhile
+  call extend(l:lines, l:hint_lines)
 
   call s:state.details_pane.set_lines(l:lines)
 endfunction
