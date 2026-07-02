@@ -186,6 +186,7 @@ function! s:render_output() abort
       endwhile
     endif
     if !empty(l:combined)
+      call s:maybe_add_analytics_hint(l:combined, get(l:t, 'log_file', ''))
       call s:set_output_title(l:title)
       return l:combined
     endif
@@ -194,6 +195,7 @@ function! s:render_output() abort
     if !empty(l:log)
       let l:from_disk = s:read_log_output(l:log)
       if !empty(l:from_disk)
+        call s:maybe_add_analytics_hint(l:from_disk, l:log)
         call s:set_output_title(l:title)
         return l:from_disk
       endif
@@ -211,6 +213,7 @@ function! s:render_output() abort
     if !empty(l:path)
       let l:from_disk = s:read_log_output(l:path)
       if !empty(l:from_disk)
+        call s:maybe_add_analytics_hint(l:from_disk, l:path)
         call s:set_output_title(l:title)
         return l:from_disk
       endif
@@ -220,6 +223,24 @@ function! s:render_output() abort
   endif
 
   return [{'text': '  (select a task)'}]
+endfunction
+
+" Append a hint line if the task has analytics data available.
+function! s:maybe_add_analytics_hint(lines, log_path) abort
+  if empty(a:log_path) | return | endif
+  let l:ctx = skyrg#backend#action_log#read_context(a:log_path)
+  let l:local_dir = get(l:ctx, 'local_dir', '')
+  if !empty(l:local_dir) && isdirectory(l:local_dir)
+    let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
+    if !empty(l:txtlog_files)
+      call add(a:lines, {'text': ''})
+      let l:hint = '  Press o to open analytics viewer'
+      call add(a:lines, {'text': l:hint, 'props': [
+        \ {'col': 9, 'length': 1, 'type': 'skyrg_sel'},
+        \ {'col': 1, 'length': len(l:hint), 'type': 'skyrg_dim'},
+        \ ]})
+    endif
+  endif
 endfunction
 
 " Read a task log file and return popup-formatted output lines.
