@@ -92,26 +92,41 @@ function! s:parse_line(line) abort
 endfunction
 
 " Parse a string of key=value pairs into a dict.
-" Handles quoted values like ssid="skydio-guest".
+" Handles quoted values and values with spaces (e.g. details=[CHECKSUMMING] ...).
+" Strategy: find all 'key=' positions, then each value is everything between
+" the current '=' and the next ' key=' boundary.
 function! s:parse_fields(str) abort
   let l:fields = {}
-  let l:s = a:str
-  while !empty(l:s)
-    " Skip whitespace
-    let l:s = substitute(l:s, '^\s\+', '', '')
-    if empty(l:s) | break | endif
+  let l:s = substitute(a:str, '^\s\+', '', '')
+  if empty(l:s) | return l:fields | endif
 
-    " Match key=value
-    let l:m = matchlist(l:s, '^\(\w\+\)=\("\([^"]*\)"\|\(\S*\)\)\s*')
-    if empty(l:m)
-      break
-    endif
-    let l:key = l:m[1]
-    " Quoted value in group 3, unquoted in group 4
-    let l:val = !empty(l:m[3]) ? l:m[3] : l:m[4]
-    let l:fields[l:key] = l:val
-    let l:s = l:s[len(l:m[0]):]
+  " Find all key= start positions
+  let l:pairs = []
+  let l:pos = 0
+  while l:pos < len(l:s)
+    let l:m = match(l:s, '\(^\|\s\)\zs\w\+=', l:pos)
+    if l:m < 0 | break | endif
+    call add(l:pairs, l:m)
+    let l:pos = l:m + 1
   endwhile
+
+  for l:i in range(len(l:pairs))
+    let l:start = l:pairs[l:i]
+    let l:end = l:i < len(l:pairs) - 1 ? l:pairs[l:i + 1] : len(l:s)
+    let l:segment = l:s[l:start : l:end - 1]
+    " Trim trailing whitespace
+    let l:segment = substitute(l:segment, '\s\+$', '', '')
+    let l:eq = stridx(l:segment, '=')
+    if l:eq <= 0 | continue | endif
+    let l:key = l:segment[:l:eq - 1]
+    let l:val = l:segment[l:eq + 1:]
+    " Strip surrounding quotes
+    if l:val =~# '^".*"$'
+      let l:val = l:val[1:-2]
+    endif
+    let l:fields[l:key] = l:val
+  endfor
+
   return l:fields
 endfunction
 
