@@ -104,7 +104,7 @@ function! s:parse_fields(str) abort
   let l:pairs = []
   let l:pos = 0
   while l:pos < len(l:s)
-    let l:m = match(l:s, '\(^\|\s\)\zs\w\+=', l:pos)
+    let l:m = match(l:s, '\(^\|\s\)\zs\w\{2,}=', l:pos)
     if l:m < 0 | break | endif
     call add(l:pairs, l:m)
     let l:pos = l:m + 1
