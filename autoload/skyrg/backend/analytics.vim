@@ -93,41 +93,45 @@ endfunction
 
 " Parse a string of key=value pairs into a dict.
 " Handles quoted values and values with spaces (e.g. details=[CHECKSUMMING] ...).
-" Strategy: find all 'key=' positions, then each value is everything between
-" the current '=' and the next ' key=' boundary.
+" Strategy: split by whitespace into tokens; a token matching ^\w\+= starts a
+" new key-value pair, anything else is a continuation of the previous value.
 function! s:parse_fields(str) abort
   let l:fields = {}
-  let l:s = substitute(a:str, '^\s\+', '', '')
-  if empty(l:s) | return l:fields | endif
+  let l:tokens = split(a:str)
+  if empty(l:tokens) | return l:fields | endif
 
-  " Find all key= start positions
-  let l:pairs = []
-  let l:pos = 0
-  while l:pos < len(l:s)
-    let l:m = match(l:s, '\<\w\{2,}=', l:pos)
-    if l:m < 0 | break | endif
-    call add(l:pairs, l:m)
-    let l:pos = l:m + 1
-  endwhile
+  let l:cur_key = ''
+  let l:cur_val = ''
 
-  for l:i in range(len(l:pairs))
-    let l:start = l:pairs[l:i]
-    let l:end = l:i < len(l:pairs) - 1 ? l:pairs[l:i + 1] : len(l:s)
-    let l:segment = l:s[l:start : l:end - 1]
-    " Trim trailing whitespace
-    let l:segment = substitute(l:segment, '\s\+$', '', '')
-    let l:eq = stridx(l:segment, '=')
-    if l:eq <= 0 | continue | endif
-    let l:key = l:segment[:l:eq - 1]
-    let l:val = l:segment[l:eq + 1:]
-    " Strip surrounding quotes
-    if l:val =~# '^".*"$'
-      let l:val = l:val[1:-2]
+  for l:tok in l:tokens
+    if l:tok =~# '^\w\+='
+      " Save previous pair
+      if !empty(l:cur_key)
+        let l:fields[l:cur_key] = s:strip_quotes(l:cur_val)
+      endif
+      " Start new pair
+      let l:eq = stridx(l:tok, '=')
+      let l:cur_key = l:tok[:l:eq - 1]
+      let l:cur_val = l:tok[l:eq + 1:]
+    elseif !empty(l:cur_key)
+      " Continuation of previous value (contains spaces)
+      let l:cur_val .= ' ' . l:tok
     endif
-    let l:fields[l:key] = l:val
   endfor
 
+  " Save last pair
+  if !empty(l:cur_key)
+    let l:fields[l:cur_key] = s:strip_quotes(l:cur_val)
+  endif
+
   return l:fields
+endfunction
+
+function! s:strip_quotes(val) abort
+  if a:val =~# '^".*"$'
+    return a:val[1:-2]
+  endif
+  return a:val
 endfunction
 
 "==============================================================================
