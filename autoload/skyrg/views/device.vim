@@ -233,43 +233,63 @@ function! s:do_view_analytics(vehicle) abort
   let l:local_dir = '/tmp/c38_analytics_' . l:timestamp
   call mkdir(l:local_dir, 'p')
 
-  echom printf('[SkyRG] Copying analytics from %s to %s...', l:soc.host, l:local_dir)
-  let l:scp_cmd = printf('scp -r %s:/data/vendor/analytics/ %s/', l:soc.host, l:local_dir)
-  let l:output = system(l:scp_cmd)
-  if v:shell_error
-    echohl ErrorMsg
-    echo printf('[SkyRG] Failed to copy analytics (exit %d)', v:shell_error)
-    echohl None
-    return
-  endif
-
-  echom printf('[SkyRG] Converting analytics logs...')
+  " Build a shell script that copies + converts + prints the txtlog path
   let l:aircam_dir = '/home/skydio/aircam'
-  let l:convert_cmd = printf(
-    \ 'cd %s && bazel run tools/analytics_tools/executables:analytics_to_file -- --dir %s --skip-error-reports',
-    \ l:aircam_dir, l:local_dir)
-  let l:output = system(l:convert_cmd)
-  if v:shell_error
-    echohl ErrorMsg
-    echo printf('[SkyRG] Failed to convert analytics (exit %d)', v:shell_error)
-    echohl None
+  let l:cmd = join([
+    \ printf('scp -r %s:/data/vendor/analytics/ %s/', l:soc.host, l:local_dir),
+    \ printf('cd %s && bazel run tools/analytics_tools/executables:analytics_to_file -- --dir %s --skip-error-reports >&2',
+    \   l:aircam_dir, l:local_dir),
+    \ printf('echo ANALYTICS_DIR=%s', l:local_dir),
+    \ ], ' && ')
+
+  " Dispatch as async job with followup
+  let l:action = {
+    \ 'name': 'Fetch analytics',
+    \ 'job': l:cmd,
+    \ 'job_opts': {
+    \   'title': 'Fetch analytics from ' . l:soc.host,
+    \   'on_success': [
+    \     {
+    \       'name': 'Open analytics viewer',
+    \       'key': 'o',
+    \       'execute': function('s:open_analytics_from_task'),
+    \     },
+    \   ],
+    \ },
+    \ }
+
+  call skyrg#backend#action#dispatch(l:action, {
+    \ 'local_dir': l:local_dir,
+    \ 'host': l:soc.host,
+    \ })
+endfunction
+
+" Followup: find the txtlog in the task output dir and open the viewer.
+function! s:open_analytics_from_task(ctx) abort
+  " Extract ANALYTICS_DIR from task stdout
+  let l:local_dir = ''
+  for l:line in get(a:ctx, 'task_stdout', [])
+    if l:line =~# '^ANALYTICS_DIR='
+      let l:local_dir = substitute(l:line, '^ANALYTICS_DIR=', '', '')
+      break
+    endif
+  endfor
+  if empty(l:local_dir)
+    let l:local_dir = get(a:ctx, 'local_dir', '')
+  endif
+  if empty(l:local_dir)
+    echohl WarningMsg | echo '[SkyRG] Cannot find analytics directory' | echohl None
     return
   endif
 
-  " Find the txtlog file
   let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
   if empty(l:txtlog_files)
     echohl WarningMsg | echo '[SkyRG] No txtlog files found after conversion' | echohl None
     return
   endif
 
-  " Extract vehicle_id from directory structure
   let l:vehicle_id = fnamemodify(l:txtlog_files[0], ':h:t')
-  let l:txtlog_path = l:txtlog_files[0]
-  echom printf('[SkyRG] Opening analytics viewer: %s', l:txtlog_path)
-
-  " Open the multi-pane analytics viewer
-  call skyrg#views#analytics#open(l:txtlog_path, l:vehicle_id)
+  call skyrg#views#analytics#open(l:txtlog_files[0], l:vehicle_id)
 endfunction
 
 " Tail logs on a device board.
