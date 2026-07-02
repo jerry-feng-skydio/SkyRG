@@ -10,6 +10,7 @@
 "   Enter             — open full log in a split
 "   c                 — cancel running task
 "   f                 — trigger followup actions
+"   o                 — re-open output view (e.g. analytics viewer)
 "   q / Esc           — close
 
 let s:popup_list = 0
@@ -346,6 +347,26 @@ function! s:on_key(winid, key) abort
         call skyrg#backend#tasks#dismiss_followups(l:t.id)
         call s:update()
       endif
+    endif
+    return 1
+  endif
+
+  " o: re-open output view (e.g. analytics viewer) from task context
+  if a:key ==# 'o'
+    let l:log = s:selected_log_path()
+    if !empty(l:log)
+      let l:ctx = skyrg#backend#action_log#read_context(l:log)
+      let l:local_dir = get(l:ctx, 'local_dir', '')
+      if !empty(l:local_dir) && isdirectory(l:local_dir)
+        let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
+        if !empty(l:txtlog_files)
+          call s:close_popups()
+          let l:vehicle_id = fnamemodify(l:txtlog_files[0], ':h:t')
+          call skyrg#views#analytics#open(l:txtlog_files[0], l:vehicle_id)
+          return 1
+        endif
+      endif
+      echohl WarningMsg | echo '[SkyRG] No analytics data found for this task' | echohl None
     endif
     return 1
   endif

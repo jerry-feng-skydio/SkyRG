@@ -146,6 +146,21 @@ function! skyrg#backend#action_log#path(task_or_entry) abort
   return s:data_dir() . '/' . l:fname
 endfunction
 
+" Read the context dict from a log file header.
+" Parses the 'Context:   {...}' line without reading the whole file.
+function! skyrg#backend#action_log#read_context(path) abort
+  if !filereadable(a:path) | return {} | endif
+  for l:line in readfile(a:path, '', 15)
+    if l:line =~# '^Context:\s\+'
+      try
+        return json_decode(substitute(l:line, '^Context:\s\+', '', ''))
+      catch
+      endtry
+    endif
+  endfor
+  return {}
+endfunction
+
 " Return the actions data directory.
 function! skyrg#backend#action_log#dir() abort
   return s:data_dir()
