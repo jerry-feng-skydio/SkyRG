@@ -212,6 +212,33 @@ endfunction
 " Details pane
 "==============================================================================
 
+" Break text into chunks of at most max_w characters.
+" Tries to split at path separators (/) or hyphens (-) when possible.
+function! s:wrap_text(text, max_w) abort
+  let l:chunks = []
+  let l:remaining = a:text
+  while len(l:remaining) > a:max_w
+    " Try to find a good break point (/ or -) near the end of the chunk
+    let l:break_at = a:max_w
+    let l:best = -1
+    for l:i in range(a:max_w - 1, a:max_w / 2, -1)
+      if l:remaining[l:i] ==# '/' || l:remaining[l:i] ==# '-'
+        let l:best = l:i + 1
+        break
+      endif
+    endfor
+    if l:best > 0
+      let l:break_at = l:best
+    endif
+    call add(l:chunks, l:remaining[:l:break_at - 1])
+    let l:remaining = l:remaining[l:break_at:]
+  endwhile
+  if !empty(l:remaining)
+    call add(l:chunks, l:remaining)
+  endif
+  return l:chunks
+endfunction
+
 function! s:update_details(event) abort
   let l:fields = skyrg#backend#analytics#detail_fields(a:event)
   let l:lines = []
@@ -222,12 +249,29 @@ function! s:update_details(event) abort
     endif
   endfor
 
+  " Available width for value text (pane width minus border, indent, key col)
+  let l:val_col = l:max_key + 4
+  let l:pane_w = max([s:state.details_pane._geo.width - 2, 20])
+  let l:val_w = l:pane_w - l:val_col
+
   for [l:k, l:v] in l:fields
     let l:pad = repeat(' ', l:max_key - len(l:k))
-    let l:text = printf('  %s%s  %s', l:k, l:pad, l:v)
-    " Highlight key name
-    let l:props = [{'col': 3, 'length': len(l:k), 'type': 'skyrg_dim'}]
-    call add(l:lines, skyrg#ui#util#line(l:text, l:props))
+    let l:indent = repeat(' ', l:val_col)
+
+    if l:val_w > 0 && len(l:v) > l:val_w
+      " Wrap: first chunk on key line, rest on indented continuation lines
+      let l:chunks = s:wrap_text(l:v, l:val_w)
+      let l:text = printf('  %s%s  %s', l:k, l:pad, l:chunks[0])
+      let l:props = [{'col': 3, 'length': len(l:k), 'type': 'skyrg_dim'}]
+      call add(l:lines, skyrg#ui#util#line(l:text, l:props))
+      for l:ci in range(1, len(l:chunks) - 1)
+        call add(l:lines, {'text': l:indent . l:chunks[l:ci]})
+      endfor
+    else
+      let l:text = printf('  %s%s  %s', l:k, l:pad, l:v)
+      let l:props = [{'col': 3, 'length': len(l:k), 'type': 'skyrg_dim'}]
+      call add(l:lines, skyrg#ui#util#line(l:text, l:props))
+    endif
   endfor
 
   " Pin shortcut hints to bottom of pane
