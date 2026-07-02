@@ -428,6 +428,17 @@ function! skyrg#backend#action#show_followups(task_id) abort
   return 1
 endfunction
 
+" Public: show a followup popup with an explicit action list and context.
+" Used for reconstructed followups from historical tasks (not in memory).
+function! skyrg#backend#action#show_followups_direct(title, followups, ctx) abort
+  if empty(a:followups) | return 0 | endif
+  let l:actions = copy(a:followups)
+  let l:task = {'title': a:title, 'exit_code': 0}
+  call skyrg#log#info('action', 'followup-direct: "%s" %d actions', a:title, len(l:actions))
+  call s:followup_popup(l:task, l:actions, a:ctx)
+  return 1
+endfunction
+
 " Public: show followup popup for the most recent awaiting task.
 function! skyrg#backend#action#show_latest_followup() abort
   let l:awaiting = skyrg#backend#tasks#awaiting()

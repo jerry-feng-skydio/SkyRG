@@ -234,7 +234,7 @@ function! s:maybe_add_analytics_hint(lines, log_path) abort
     let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
     if !empty(l:txtlog_files)
       call add(a:lines, {'text': ''})
-      let l:hint = '  Press o to open analytics viewer'
+      let l:hint = '  Press f for followup actions (analytics viewer)'
       call add(a:lines, {'text': l:hint, 'props': [
         \ {'col': 9, 'length': 1, 'type': 'skyrg_sel'},
         \ {'col': 1, 'length': len(l:hint), 'type': 'skyrg_dim'},
@@ -346,14 +346,27 @@ function! s:on_key(winid, key) abort
     return 1
   endif
 
-  " f: open followup actions for awaiting task
+  " f: open followup actions (in-memory awaiting or reconstructed from history)
   if a:key ==# 'f'
+    " Try in-memory awaiting task first
     let l:tasks = skyrg#backend#tasks#all()
     if s:selected < len(l:tasks)
       let l:t = l:tasks[s:selected]
       if l:t.status ==# 'awaiting'
         call s:close_popups()
         call skyrg#backend#action#show_followups(l:t.id)
+        return 1
+      endif
+    endif
+    " Fall back: reconstruct followups from log context
+    let l:log = s:selected_log_path()
+    if !empty(l:log)
+      let l:followups = s:reconstruct_followups(l:log)
+      if !empty(l:followups)
+        let l:title = s:selected_title()
+        call s:close_popups()
+        call skyrg#backend#action#show_followups_direct(l:title, l:followups.actions, l:followups.ctx)
+        return 1
       endif
     endif
     return 1
@@ -413,6 +426,53 @@ function! s:selected_log_path() abort
     return skyrg#backend#action_log#path(l:entries[s:selected])
   endif
   return ''
+endfunction
+
+" Return the title for the currently selected item.
+function! s:selected_title() abort
+  let l:tasks = skyrg#backend#tasks#all()
+  if !empty(l:tasks) && s:selected < len(l:tasks)
+    return l:tasks[s:selected].title
+  endif
+  let l:entries = skyrg#backend#action_log#list()
+  if !empty(l:entries) && s:selected < len(l:entries)
+    return get(l:entries[s:selected], 'title', '?')
+  endif
+  return '?'
+endfunction
+
+" Reconstruct followup actions from a task's log context.
+" Returns {'actions': [...], 'ctx': {...}} or {} if not applicable.
+function! s:reconstruct_followups(log_path) abort
+  let l:ctx = skyrg#backend#action_log#read_context(a:log_path)
+  let l:local_dir = get(l:ctx, 'local_dir', '')
+  if empty(l:local_dir) || !isdirectory(l:local_dir)
+    return {}
+  endif
+  let l:txtlog_files = glob(l:local_dir . '/*/*.txtlog', 0, 1)
+  if empty(l:txtlog_files)
+    return {}
+  endif
+  return {
+    \ 'actions': [
+    \   {
+    \     'name': 'Open analytics viewer',
+    \     'key': 'o',
+    \     'execute': {ctx -> skyrg#views#analytics#open(
+    \       ctx._txtlog_path, ctx._vehicle_id)},
+    \   },
+    \   {
+    \     'name': 'View log',
+    \     'key': 'l',
+    \     'execute': {ctx -> execute('split ' . fnameescape(ctx._log_path))},
+    \   },
+    \ ],
+    \ 'ctx': {
+    \   '_txtlog_path': l:txtlog_files[0],
+    \   '_vehicle_id': fnamemodify(l:txtlog_files[0], ':h:t'),
+    \   '_log_path': a:log_path,
+    \ },
+    \ }
 endfunction
 
 function! s:on_close(id, result) abort
